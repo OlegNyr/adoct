@@ -40,9 +40,7 @@
             <keyboard-shortcut keymap="$default" first-keystroke="alt shift I"/>
         </action>
         <action id="AsciiDocTools.AnonymizeExport"
-                class="org.tools.asciidoc.plugins.idea.action.AnonymizeExportAction"
-                text="Анонимизировать экспорт для баг-репорта"
-                description="Очистить рабочие и персональные данные в каталоге экспорта Confluence, сохранив структуру для воспроизведения багов парсера">
+                class="org.tools.asciidoc.plugins.idea.action.AnonymizeExportAction">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>

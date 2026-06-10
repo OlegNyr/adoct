@@ -90,6 +90,16 @@ intellijPlatform {
 
         ideaVersion {
             sinceBuild = property("pluginSinceBuild")
+            untilBuild = property("pluginUntilBuild")
+        }
+    }
+
+    // Plugin Verifier: те же проверки совместимости, что гоняет Marketplace.
+    // recommended() сам подбирает IDE по объявленному диапазону since/until-build (вкл. 2025.3).
+    // Запуск: ./gradlew verifyPlugin (скачивает целевые IDE при первом прогоне).
+    pluginVerification {
+        ides {
+            recommended()
         }
     }
 }
