@@ -1,0 +1,19 @@
+[versions]
+# libraries
+junit = "4.13.2"
+sshj = "0.39.0"
+slf4j = "2.0.13"
+
+# plugins
+changelog = "2.2.1"
+kotlin = "2.1.20"
+
+[libraries]
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+sshj = { group = "com.hierynomus", name = "sshj", version.ref = "sshj" }
+slf4jApi = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
+
+[plugins]
+changelog = { id = "org.jetbrains.changelog", version.ref = "changelog" }
+intelliJPlatform = { id = "org.jetbrains.intellij.platform" }
+kotlin = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
