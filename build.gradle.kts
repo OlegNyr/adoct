@@ -35,8 +35,9 @@ dependencies {
     // PlantUML для локального рендеринга
 //    implementation("net.sourceforge.plantuml:plantuml:1.2023.9")
 
-    // AsciidoctorJ для генерации диаграмм
-//    implementation("org.asciidoctor:asciidoctorj:3.0.0")
+    // AsciidoctorJ — парсинг AsciiDoc в AST для генерации Confluence storage format
+    // (модуль ru.gitverse.adoct.generate). Тянет JRuby.
+    implementation(libs.asciidoctorj)
 
     implementation("ar.com.hjg:pngj:2.0.1")
 
