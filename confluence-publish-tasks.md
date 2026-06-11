@@ -73,7 +73,8 @@
 - **Тест.** cross-doc ссылка → содержит `ri:space-key="DS"`.
 - **Риск.** Низкий, но трогает сигнатуры — проверить существующие link-тесты (ожидания обновить).
 
-### [ ] A5. Callouts (`<1>` в коде и списке)
+### [x] A5. Callouts (`<1>` в коде и списке)
+> Сделано минимально: контекст `colist` (пояснения к callout'ам) → нумерованный список (`renderList(ol)`). Маркеры `<1>` в коде остаются в сыром источнике как есть. Тест `calloutListBecomesOrderedList`.
 - **Проблема.** Не обрабатываем; в коде/тексте останутся «сырые» маркеры.
 - **Как у них** (`inline_callout.html.slim`): guarded → `<!--(n)-->`, иначе `guard(n)`.
 - **Что делать.** Низкий приоритет; оценить после A1–A4. Возможно отложить.
@@ -118,7 +119,8 @@
 - **Что делать.** В `renderImage` читать атрибуты узла и прокидывать в `ac:image`.
 - **Файлы.** `StorageRenderer`, `StorageFormat.image(...)` (расширить).
 
-### [ ] B6. example/quote/sidebar блоки
+### [x] B6. example/quote/sidebar блоки
+> Сделано: `example` → `tip` (или `expand` при `[%collapsible]`), `quote` → `<blockquote>` + атрибуция, `sidebar` → макрос `panel`. Общий `StorageRenderer.renderRichMacro` (его же переиспользует admonition). Тесты `BlockRenderTest`.
 - **Как у них** (`block_example.html.slim`): collapsible example → `expand`-макрос; обычный example → `tip`.
 - **Что делать.** Ветки контекстов; оценить нужность.
 

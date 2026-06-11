@@ -87,6 +87,10 @@ public final class StorageRenderer {
             case "paragraph" -> renderParagraph(node, sink);
             case "ulist" -> renderList(node, "ul", sink);
             case "olist" -> renderList(node, "ol", sink);
+            case "colist" -> renderList(node, "ol", sink); // пояснения к callout'ам → нумерованный список
+            case "example" -> renderExample(node, sink);
+            case "quote" -> renderQuote(node, sink);
+            case "sidebar" -> renderRichMacro("panel", node.getTitle(), node, sink);
             case "dlist" -> renderDescriptionList((DescriptionList) node, sink);
             case "table" -> renderTable((Table) node, sink);
             case "admonition" -> renderAdmonition(node, sink);
@@ -209,9 +213,37 @@ public final class StorageRenderer {
      * блоки (блочная форма {@code ====}) либо инлайн-контент (однострочная {@code NOTE: ...}).
      */
     private void renderAdmonition(StructuralNode node, RenderSink sink) {
-        String macro = StorageFormat.admonitionMacroName(String.valueOf(node.getAttribute("name")));
-        sink.append("<ac:structured-macro ac:name=\"").append(macro).append("\">");
-        String title = node.getTitle();
+        renderRichMacro(StorageFormat.admonitionMacroName(String.valueOf(node.getAttribute("name"))),
+                node.getTitle(), node, sink);
+    }
+
+    /** Example-блок: {@code [%collapsible]} → макрос {@code expand}, иначе → {@code tip} (как в Confluence Publisher). */
+    private void renderExample(StructuralNode node, RenderSink sink) {
+        boolean collapsible = node.getAttribute("collapsible-option") != null;
+        renderRichMacro(collapsible ? "expand" : "tip", node.getTitle(), node, sink);
+    }
+
+    /** Цитата → {@code <blockquote>} с телом и (опц.) атрибуцией. */
+    private void renderQuote(StructuralNode node, RenderSink sink) {
+        sink.append("<blockquote>");
+        if (node.getBlocks() != null && !node.getBlocks().isEmpty()) {
+            renderBlocks(node.getBlocks(), sink);
+        } else {
+            sink.append("<p>").append(inline(content(node), sink)).append("</p>");
+        }
+        String attribution = strAttr(node, "attribution");
+        String citation = strAttr(node, "citetitle");
+        String credit = attribution == null ? citation
+                : citation == null ? attribution : attribution + ", " + citation;
+        if (credit != null && !credit.isBlank()) {
+            sink.append("<p>— ").append(StorageFormat.escapeText(credit)).append("</p>");
+        }
+        sink.append("</blockquote>");
+    }
+
+    /** Структурный макрос с {@code rich-text-body} (admonition/example/sidebar): тело — вложенные блоки или инлайн. */
+    private void renderRichMacro(String macroName, String title, StructuralNode node, RenderSink sink) {
+        sink.append("<ac:structured-macro ac:name=\"").append(macroName).append("\">");
         if (title != null && !title.isBlank()) {
             sink.append("<ac:parameter ac:name=\"title\">")
                     .append(StorageFormat.escapeText(title))
