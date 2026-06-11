@@ -63,6 +63,24 @@ public class TableRenderTest extends AbstractStorageRendererTest {
     }
 
     @Test
+    public void nestedTableInsideAsciidocCell() {
+        String adoc = """
+                [cols="1"]
+                |===
+                a|
+                !===
+                ! Вложенная ! Ячейка
+                !===
+                |===
+                """;
+        String xhtml = render(adoc).xhtml();
+        // внешняя ячейка содержит вложенную таблицу
+        assertContains(xhtml, "<td><table>");
+        assertContains(xhtml, "Вложенная");
+        assertContains(xhtml, "Ячейка");
+    }
+
+    @Test
     public void footerAndCaptionAndWidth() {
         String adoc = """
                 .Подпись
