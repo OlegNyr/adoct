@@ -18,4 +18,49 @@ public class TableRenderTest extends AbstractStorageRendererTest {
         assertContains(xhtml, "<thead><tr><th>H1</th><th>H2</th></tr></thead>");
         assertContains(xhtml, "<tbody><tr><td>a</td><td>b</td></tr></tbody>");
     }
+
+    @Test
+    public void columnSpan() {
+        String adoc = """
+                [cols="2*"]
+                |===
+                |a |b
+                2+|объединённая
+                |===
+                """;
+        String xhtml = render(adoc).xhtml();
+        assertContains(xhtml, "<td colspan=\"2\">объединённая</td>");
+    }
+
+    @Test
+    public void rowSpan() {
+        String adoc = """
+                [cols="2*"]
+                |===
+                .2+|сверху-вниз
+                |a
+
+                |b
+                |===
+                """;
+        String xhtml = render(adoc).xhtml();
+        assertContains(xhtml, "<td rowspan=\"2\">сверху-вниз</td>");
+    }
+
+    @Test
+    public void footerAndCaptionAndWidth() {
+        String adoc = """
+                .Подпись
+                [%header%footer,cols="1",width="50%"]
+                |===
+                |H
+                |тело
+                |подвал
+                |===
+                """;
+        String xhtml = render(adoc).xhtml();
+        assertContains(xhtml, "<table style=\"width: 50%;\">");
+        assertContains(xhtml, "<caption>Подпись</caption>");
+        assertContains(xhtml, "<tfoot><tr><td>подвал</td></tr></tfoot>");
+    }
 }

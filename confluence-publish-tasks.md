@@ -83,24 +83,28 @@
 
 ## B. Недостающие фичи конвертации (не баги — просто нет). СРЕДНИЙ ПРИОРИТЕТ.
 
-### [ ] B1. `:keywords:` → labels Confluence
+### [x] B1. `:keywords:` → labels Confluence
+> Сделано: `ConfluenceClient.addLabels` (POST `/label`, prefix global); `PublishDocsToConfluence.parseKeywords` + `applyLabels` после каждой публикации (file/root/folder/leaf). Unit-тест `parseKeywords`.
 - **Как у них.** `keywords(document)` из атрибута `keywords`, split по запятой → потом клиент шлёт `/label`.
 - **Что делать.** В движке вернуть keywords из `Document` (расширить `RenderResult` или отдельный геттер).
   В `PublishDocsToConfluence` после create/update — выставить labels. Нужен метод в `ConfluenceClient` (`addLabels`).
 - **Файлы.** `RenderResult` (+labels) или новый канал, `ConfluenceClient`, `PublishDocsToConfluence`.
 
-### [ ] B2. TOC (`:toc:` / `toc::[]`)
+### [x] B2. TOC (`toc::[]`)
+> Сделано: контекст `toc` → `StorageFormat.tocMacro(maxLevel)`, maxLevel из `:toclevels:` (деф. 2). Тест `TocRenderTest`.
 - **Как у них** (`_toc.html.slim`): `<ac:structured-macro ac:name="toc"><ac:parameter name="maxLevel">N`.
 - **Что делать.** Ветка контекста `"toc"` (и атрибут `toc-placement`) → макрос toc с `maxLevel` из `toclevels`.
 - **Файлы.** `StorageRenderer`, `StorageFormat`.
 
-### [ ] B3. Секционные якоря + выравнивание + sectnums
+### [x] B3. Секционные якоря + выравнивание (sectnums отложены)
+> Сделано: anchor-макрос по `section.getId()` в каждом заголовке; роль `text-left/right/center/justify` → инлайн-`style` на `<hN>`/`<p>` (`StorageRenderer.alignmentStyle`). Тесты в `HeadingRenderTest`/`InlineFormattingRenderTest`. sectnums (нумерация в заголовке) — НЕ делал (редко, отдельно при необходимости).
 - **Как у них** (`section.html.slim`, `block_paragraph.html.slim`): в каждый `<hN>` вшит `anchor`-макрос
   (секции линкуемы); role `text-left/center/right/justify` → инлайн-`style`; `sectnums` в заголовке.
 - **Что делать.** В `renderSection`/paragraph: добавить anchor-макрос по `section.getId()`, поддержать role→style.
 - **Файлы.** `StorageRenderer`, `StorageFormat`.
 
-### [ ] B4. Богатые таблицы (colspan/rowspan/rich-cell/caption/width/footer)
+### [x] B4. Таблицы: colspan/rowspan/footer/caption/width (rich-cell отложен)
+> Сделано: `renderRows` (thead/tbody/tfoot), `cellOpenTag` (colspan/rowspan>1), caption из title, width→`style`, header-ячейки в теле → `th`. Тесты в `TableRenderTest`. Rich `a|`-ячейки рендерятся как текст (`inline(getText())`) — отдельная задача при необходимости.
 - **Как у них** (`block_table.html.slim`): head/foot/body, `colspan`/`rowspan` из ячейки, `a|` (asciidoc cell) →
   `div =cell.content`, verse/literal стили, caption, width.
 - **Что делать.** Расширить `renderTable`: colspan/rowspan атрибуты ячеек, footer, rich-cell (вложенный рендер
@@ -108,7 +112,8 @@
   colspan/rowspan уже есть — переиспользовать подход.)
 - **Файлы.** `StorageRenderer`.
 
-### [ ] B5. Атрибуты картинок (width/height/border/alt/link)
+### [x] B5. Атрибуты картинок (width/height/alt/title/link)
+> Сделано: `StorageFormat.image(file, alt, title, width, height)` (+ac:custom-width), обёртка `<a href>` при `link=` в `StorageRenderer.renderImage`. Тесты в `ImageRenderTest`. border — не делал (ниша).
 - **Как у них** (`block_image.html.slim`): `ac:height/width/title/alt/border/custom-width`, опц. обёртка в `<a href>`.
 - **Что делать.** В `renderImage` читать атрибуты узла и прокидывать в `ac:image`.
 - **Файлы.** `StorageRenderer`, `StorageFormat.image(...)` (расширить).

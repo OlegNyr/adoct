@@ -137,15 +137,40 @@ final class StorageFormat {
         return "<ac:parameter ac:name=\"" + escapeAttr(name) + "\">" + escapeText(value) + "</ac:parameter>";
     }
 
+    /** Макрос оглавления Confluence с максимальным уровнем. */
+    static String tocMacro(int maxLevel) {
+        return "<ac:structured-macro ac:name=\"toc\"><ac:parameter ac:name=\"maxLevel\">"
+                + maxLevel + "</ac:parameter></ac:structured-macro>";
+    }
+
     /** Макрос-якорь Confluence (цель внутренней ссылки). */
     static String anchorMacro(String name) {
         return "<ac:structured-macro ac:name=\"anchor\"><ac:parameter ac:name=\"\">"
                 + escapeText(name) + "</ac:parameter></ac:structured-macro>";
     }
 
-    /** Картинка по вложению страницы. */
-    static String image(String fileName) {
-        return "<ac:image><ri:attachment ri:filename=\"" + escapeAttr(fileName) + "\"/></ac:image>";
+    /** Блочная картинка по вложению страницы с опциональными атрибутами alt/title/width/height. */
+    static String image(String fileName, String alt, String title, String width, String height) {
+        StringBuilder sb = new StringBuilder("<ac:image");
+        appendAttr(sb, "ac:alt", alt);
+        appendAttr(sb, "ac:title", title);
+        appendAttr(sb, "ac:width", width);
+        appendAttr(sb, "ac:height", height);
+        if (notBlank(width) || notBlank(height)) {
+            sb.append(" ac:custom-width=\"true\"");
+        }
+        return sb.append("><ri:attachment ri:filename=\"").append(escapeAttr(fileName))
+                .append("\"/></ac:image>").toString();
+    }
+
+    private static void appendAttr(StringBuilder sb, String name, String value) {
+        if (notBlank(value)) {
+            sb.append(' ').append(name).append("=\"").append(escapeAttr(value)).append('"');
+        }
+    }
+
+    private static boolean notBlank(String s) {
+        return s != null && !s.isBlank();
     }
 
     /** Инлайн-картинка по вложению страницы. */

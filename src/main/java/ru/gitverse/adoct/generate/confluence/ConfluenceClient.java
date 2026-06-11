@@ -14,6 +14,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 /**
  * Клиент REST API Confluence Server/Data Center (поколение ~2022).
@@ -141,6 +142,25 @@ public final class ConfluenceClient {
                 .build();
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         ensureSuccess(response, "обновить страницу " + pageId);
+    }
+
+    /** Проставляет странице глобальные метки (labels). Пустой список — запрос не шлётся. */
+    public void addLabels(String pageId, List<String> labels) throws IOException, InterruptedException {
+        if (labels.isEmpty()) {
+            return;
+        }
+        ArrayNode payload = mapper.createArrayNode();
+        for (String label : labels) {
+            ObjectNode node = payload.addObject();
+            node.put("prefix", "global");
+            node.put("name", label);
+        }
+        HttpRequest request = baseRequest("/rest/api/content/" + pageId + "/label")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload), StandardCharsets.UTF_8))
+                .build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        ensureSuccess(response, "проставить метки страницы " + pageId);
     }
 
     private HttpRequest.Builder baseRequest(String path) {

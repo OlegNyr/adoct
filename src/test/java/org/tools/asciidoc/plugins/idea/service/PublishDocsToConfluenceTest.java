@@ -40,6 +40,18 @@ public class PublishDocsToConfluenceTest {
     }
 
     @Test
+    public void parseKeywordsSplitsTrimsAndDropsBlanks() {
+        assertEquals(List.of("alpha", "beta", "gamma"),
+                PublishDocsToConfluence.parseKeywords(" alpha, beta ,gamma , "));
+    }
+
+    @Test
+    public void parseKeywordsEmptyWhenNullOrBlank() {
+        assertTrue(PublishDocsToConfluence.parseKeywords(null).isEmpty());
+        assertTrue(PublishDocsToConfluence.parseKeywords("  ").isEmpty());
+    }
+
+    @Test
     public void folderTreeCollectsAncestorsTopDown() {
         Path dir = Path.of("root");
         List<Path> files = List.of(

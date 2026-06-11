@@ -13,6 +13,12 @@ public class InlineFormattingRenderTest extends AbstractStorageRendererTest {
     }
 
     @Test
+    public void paragraphAlignmentRoleBecomesStyle() {
+        String xhtml = render("[.text-right]\nсправа\n").xhtml();
+        assertContains(xhtml, "<p style=\"text-align: right;\">");
+    }
+
+    @Test
     public void hardLineBreakIsSelfClosed() {
         // Жёсткий перенос ` +` AsciiDoctor отдаёт как <br>; для строгого XML нужен самозакрытый тег.
         String xhtml = render("первая строка +\nвторая строка\n").xhtml();

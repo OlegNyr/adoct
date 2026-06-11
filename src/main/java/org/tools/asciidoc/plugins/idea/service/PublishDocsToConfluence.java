@@ -22,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -116,6 +117,7 @@ public final class PublishDocsToConfluence {
             uploadAttachments(client, pageId, result.images());
             // Заголовок страницы сохраняем как есть — обновляем только тело.
             client.updatePage(pageId, version.title(), result.xhtml(), version.number() + 1);
+            applyLabels(client, pageId, doc);
             indicator.setFraction(1.0);
             return "Published " + file.getFileName() + " to page " + pageId;
         }
@@ -203,6 +205,7 @@ public final class PublishDocsToConfluence {
             RenderResult result = render(indexFile, doc, index, spaceKey);
             updateBody(client, parentId, result.xhtml());
             uploadAttachments(client, parentId, result.images());
+            applyLabels(client, parentId, doc);
             counts.updated++;
         }
     }
@@ -227,6 +230,7 @@ public final class PublishDocsToConfluence {
             if (existingId != null && !existingId.isBlank()) {
                 updateBody(client, existingId, result.xhtml());
                 uploadAttachments(client, existingId, result.images());
+                applyLabels(client, existingId, doc);
                 counts.updated++;
                 return existingId;
             }
@@ -234,6 +238,7 @@ public final class PublishDocsToConfluence {
             String newId = client.createPage(space, parentPageId, title, result.xhtml());
             writeBackConfluencyId(indexFile, newId);
             uploadAttachments(client, newId, result.images());
+            applyLabels(client, newId, doc);
             counts.created++;
             return newId;
         }
@@ -253,6 +258,7 @@ public final class PublishDocsToConfluence {
             if (existingId != null && !existingId.isBlank()) {
                 updateBody(client, existingId, result.xhtml());
                 uploadAttachments(client, existingId, result.images());
+                applyLabels(client, existingId, doc);
                 counts.updated++;
                 return;
             }
@@ -260,6 +266,7 @@ public final class PublishDocsToConfluence {
             String newId = client.createPage(space, parentPageId, title, result.xhtml());
             writeBackConfluencyId(file, newId);
             uploadAttachments(client, newId, result.images());
+            applyLabels(client, newId, doc);
             counts.created++;
         }
     }
@@ -293,6 +300,23 @@ public final class PublishDocsToConfluence {
 
     private static boolean isIgnored(Document doc) {
         return IGNORE.equalsIgnoreCase(attribute(doc, ID_ATTRIBUTE));
+    }
+
+    /** Проставляет странице метки из атрибута {@code :keywords:} документа (если есть). */
+    private void applyLabels(ConfluenceClient client, String pageId, Document doc)
+            throws IOException, InterruptedException {
+        client.addLabels(pageId, parseKeywords(attribute(doc, "keywords")));
+    }
+
+    /** Разбирает атрибут {@code :keywords:} (значения через запятую) в список меток. */
+    static List<String> parseKeywords(String keywords) {
+        if (keywords == null || keywords.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(keywords.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
     }
 
     /** Все папки от {@code dir} (включительно) до каждого файла, отсортированные сверху вниз (по глубине). */

@@ -84,12 +84,13 @@ public final class StorageRenderer {
     private void renderNode(StructuralNode node, RenderSink sink) {
         switch (node.getContext()) {
             case "section" -> renderSection((Section) node, sink);
-            case "paragraph" -> sink.append("<p>").append(inline(content(node), sink)).append("</p>");
+            case "paragraph" -> renderParagraph(node, sink);
             case "ulist" -> renderList(node, "ul", sink);
             case "olist" -> renderList(node, "ol", sink);
             case "dlist" -> renderDescriptionList((DescriptionList) node, sink);
             case "table" -> renderTable((Table) node, sink);
             case "admonition" -> renderAdmonition(node, sink);
+            case "toc" -> sink.append(StorageFormat.tocMacro(tocLevels(node)));
             case "image" -> renderImage(node, sink);
             case "pass" -> sink.append(content(node)); // raw passthrough (напр. макрос include от IncludeProcessor)
             case "listing", "literal" -> renderListing(node, sink);
@@ -99,12 +100,38 @@ public final class StorageRenderer {
 
     private void renderSection(Section section, RenderSink sink) {
         int level = Math.min(Math.max(section.getLevel(), 1), 6);
+        String style = alignmentStyle(section.getRole());
+        sink.append(style == null ? "<h" + level + ">" : "<h" + level + " style=\"" + style + "\">");
+        // Якорь секции — чтобы на неё можно было сослаться (<<id>>) с этой или другой страницы.
+        String id = section.getId();
+        if (id != null && !id.isBlank()) {
+            sink.append(StorageFormat.anchorMacro(id));
+        }
         // getTitle() уже отдаёт готовый инлайн-HTML (напр. `code` → <code>, *bold* → <strong>),
         // поэтому прогоняем через нормализатор, а НЕ экранируем — иначе теги заголовка видны как литерал.
-        sink.append("<h").append(level).append('>')
-                .append(inline(section.getTitle(), sink))
-                .append("</h").append(level).append('>');
+        sink.append(inline(section.getTitle(), sink)).append("</h" + level + ">");
         renderBlocks(section.getBlocks(), sink);
+    }
+
+    private void renderParagraph(StructuralNode node, RenderSink sink) {
+        String style = alignmentStyle(node.getRole());
+        sink.append(style == null ? "<p>" : "<p style=\"" + style + "\">")
+                .append(inline(content(node), sink))
+                .append("</p>");
+    }
+
+    /** Роль выравнивания AsciiDoc → инлайн-стиль Confluence; {@code null}, если роль не про выравнивание. */
+    private static String alignmentStyle(String role) {
+        if (role == null) {
+            return null;
+        }
+        return switch (role) {
+            case "text-left" -> "text-align: left;";
+            case "text-right" -> "text-align: right;";
+            case "text-center" -> "text-align: center;";
+            case "text-justify" -> "text-align: justify;";
+            default -> null;
+        };
     }
 
     private void renderList(StructuralNode node, String tag, RenderSink sink) {
@@ -135,28 +162,45 @@ public final class StorageRenderer {
     }
 
     private void renderTable(Table table, RenderSink sink) {
-        sink.append("<table>");
-        List<Row> header = table.getHeader();
-        if (header != null && !header.isEmpty()) {
-            sink.append("<thead>");
-            for (Row row : header) {
-                sink.append("<tr>");
-                for (Cell cell : row.getCells()) {
-                    sink.append("<th>").append(cellText(cell, sink)).append("</th>");
-                }
-                sink.append("</tr>");
-            }
-            sink.append("</thead>");
+        String width = strAttr(table, "width");
+        sink.append(width == null ? "<table>" : "<table style=\"width: " + width + ";\">");
+        String title = table.getTitle();
+        if (title != null && !title.isBlank()) {
+            sink.append("<caption>").append(inline(title, sink)).append("</caption>");
         }
-        sink.append("<tbody>");
-        for (Row row : table.getBody()) {
+        renderRows(table.getHeader(), "thead", true, sink);
+        renderRows(table.getBody(), "tbody", false, sink);
+        renderRows(table.getFooter(), "tfoot", false, sink);
+        sink.append("</table>");
+    }
+
+    private void renderRows(List<Row> rows, String sectionTag, boolean headerSection, RenderSink sink) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        sink.append("<").append(sectionTag).append(">");
+        for (Row row : rows) {
             sink.append("<tr>");
             for (Cell cell : row.getCells()) {
-                sink.append("<td>").append(cellText(cell, sink)).append("</td>");
+                boolean th = headerSection || "header".equals(cell.getStyle());
+                String tag = th ? "th" : "td";
+                sink.append(cellOpenTag(tag, cell)).append(cellText(cell, sink)).append("</").append(tag).append(">");
             }
             sink.append("</tr>");
         }
-        sink.append("</tbody></table>");
+        sink.append("</").append(sectionTag).append(">");
+    }
+
+    /** Открывающий тег ячейки с colspan/rowspan (если > 1). */
+    private static String cellOpenTag(String tag, Cell cell) {
+        StringBuilder sb = new StringBuilder("<").append(tag);
+        if (cell.getColspan() > 1) {
+            sb.append(" colspan=\"").append(cell.getColspan()).append("\"");
+        }
+        if (cell.getRowspan() > 1) {
+            sb.append(" rowspan=\"").append(cell.getRowspan()).append("\"");
+        }
+        return sb.append(">").toString();
     }
 
     /**
@@ -185,7 +229,19 @@ public final class StorageRenderer {
     private void renderImage(StructuralNode node, RenderSink sink) {
         String target = String.valueOf(node.getAttribute("target"));
         sink.attachments().add(resolveImage(target));
-        sink.append(StorageFormat.image(Path.of(target).getFileName().toString()));
+        String image = StorageFormat.image(
+                Path.of(target).getFileName().toString(),
+                strAttr(node, "alt"),
+                node.getTitle(),
+                strAttr(node, "width"),
+                strAttr(node, "height"));
+        String link = strAttr(node, "link");
+        if (link != null && !link.isBlank()) {
+            sink.append("<a href=\"").append(StorageFormat.escapeAttr(link)).append("\">")
+                    .append(image).append("</a>");
+        } else {
+            sink.append(image);
+        }
     }
 
     private void renderListing(StructuralNode node, RenderSink sink) {
@@ -210,6 +266,19 @@ public final class StorageRenderer {
     private static String strAttr(StructuralNode node, String name) {
         Object value = node.getAttribute(name);
         return value == null ? null : value.toString();
+    }
+
+    /** Значение {@code :toclevels:} документа (по умолчанию 2). */
+    private static int tocLevels(StructuralNode node) {
+        Object value = node.getDocument().getAttribute("toclevels");
+        if (value == null) {
+            return 2;
+        }
+        try {
+            return Integer.parseInt(value.toString().trim());
+        } catch (NumberFormatException e) {
+            return 2;
+        }
     }
 
     private String cellText(Cell cell, RenderSink sink) {
