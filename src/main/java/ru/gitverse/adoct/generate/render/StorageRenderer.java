@@ -26,7 +26,7 @@ import java.util.List;
  */
 public final class StorageRenderer {
 
-    private static final String CODE_MACRO = "code";
+    private static final String SOURCE_STYLE = "source";
     private static final String PLANTUML_STYLE = "plantuml";
 
     private final String plantumlMacro;
@@ -43,6 +43,11 @@ public final class StorageRenderer {
         this(plantumlMacro, baseDir, imagesDir, AnchorIndex.empty(), null);
     }
 
+    public StorageRenderer(String plantumlMacro, Path baseDir, String imagesDir,
+                           AnchorIndex anchorIndex, Path currentFile) {
+        this(plantumlMacro, baseDir, imagesDir, anchorIndex, currentFile, "");
+    }
+
     /**
      * @param plantumlMacro имя серверного макроса PlantUML (зависит от установленного плагина)
      * @param baseDir       директория исходного {@code .adoc} — для разрешения путей картинок/файлов
@@ -50,13 +55,15 @@ public final class StorageRenderer {
      * @param anchorIndex   индекс якорей по всему набору публикуемых файлов (см. {@link AnchorIndex})
      * @param currentFile   путь текущего {@code .adoc} — чтобы отличить ссылку-якорь в пределах своей
      *                      страницы от ссылки на якорь, объявленный в другом файле
+     * @param spaceKey      ключ пространства Confluence — для {@code ri:space-key} в межстраничных ссылках
+     *                      (нужен новому редактору; пустой — атрибут не добавляется)
      */
     public StorageRenderer(String plantumlMacro, Path baseDir, String imagesDir,
-                           AnchorIndex anchorIndex, Path currentFile) {
+                           AnchorIndex anchorIndex, Path currentFile, String spaceKey) {
         this.plantumlMacro = plantumlMacro;
         this.baseDir = baseDir;
         this.imagesDir = imagesDir == null ? "" : imagesDir;
-        this.normalizer = new InlineNormalizer(baseDir, anchorIndex, currentFile);
+        this.normalizer = new InlineNormalizer(baseDir, anchorIndex, currentFile, spaceKey);
     }
 
     public RenderResult render(Document document) {
@@ -82,6 +89,7 @@ public final class StorageRenderer {
             case "olist" -> renderList(node, "ol", sink);
             case "dlist" -> renderDescriptionList((DescriptionList) node, sink);
             case "table" -> renderTable((Table) node, sink);
+            case "admonition" -> renderAdmonition(node, sink);
             case "image" -> renderImage(node, sink);
             case "pass" -> sink.append(content(node)); // raw passthrough (напр. макрос include от IncludeProcessor)
             case "listing", "literal" -> renderListing(node, sink);
@@ -151,6 +159,29 @@ public final class StorageRenderer {
         sink.append("</tbody></table>");
     }
 
+    /**
+     * Admonition ({@code [NOTE]/[TIP]/[CAUTION]/[WARNING]/[IMPORTANT]}) → панель Confluence
+     * ({@code info/tip/note/warning} по {@link StorageFormat#admonitionMacroName}). Тело — вложенные
+     * блоки (блочная форма {@code ====}) либо инлайн-контент (однострочная {@code NOTE: ...}).
+     */
+    private void renderAdmonition(StructuralNode node, RenderSink sink) {
+        String macro = StorageFormat.admonitionMacroName(String.valueOf(node.getAttribute("name")));
+        sink.append("<ac:structured-macro ac:name=\"").append(macro).append("\">");
+        String title = node.getTitle();
+        if (title != null && !title.isBlank()) {
+            sink.append("<ac:parameter ac:name=\"title\">")
+                    .append(StorageFormat.escapeText(title))
+                    .append("</ac:parameter>");
+        }
+        sink.append("<ac:rich-text-body>");
+        if (node.getBlocks() != null && !node.getBlocks().isEmpty()) {
+            renderBlocks(node.getBlocks(), sink);
+        } else {
+            sink.append("<p>").append(inline(content(node), sink)).append("</p>");
+        }
+        sink.append("</ac:rich-text-body></ac:structured-macro>");
+    }
+
     private void renderImage(StructuralNode node, RenderSink sink) {
         String target = String.valueOf(node.getAttribute("target"));
         sink.attachments().add(resolveImage(target));
@@ -159,8 +190,26 @@ public final class StorageRenderer {
 
     private void renderListing(StructuralNode node, RenderSink sink) {
         String source = node instanceof Block block && block.getSource() != null ? block.getSource() : "";
-        String macro = PLANTUML_STYLE.equalsIgnoreCase(node.getStyle()) ? plantumlMacro : CODE_MACRO;
-        sink.append(StorageFormat.macro(macro, source));
+        String style = node.getStyle();
+        if (PLANTUML_STYLE.equalsIgnoreCase(style)) {
+            sink.append(StorageFormat.macro(plantumlMacro, source));
+        } else if (SOURCE_STYLE.equalsIgnoreCase(style)) {
+            sink.append(StorageFormat.codeMacro(
+                    StorageFormat.confluenceLang(strAttr(node, "language")),
+                    node.getTitle(),
+                    node.getAttribute("linenums") != null,
+                    strAttr(node, "start"),
+                    strAttr(node, "collapse"),
+                    source));
+        } else {
+            // литерал/листинг без [source] → noformat
+            sink.append(StorageFormat.noformatMacro(node.getTitle(), source));
+        }
+    }
+
+    private static String strAttr(StructuralNode node, String name) {
+        Object value = node.getAttribute(name);
+        return value == null ? null : value.toString();
     }
 
     private String cellText(Cell cell, RenderSink sink) {

@@ -111,7 +111,7 @@ public final class PublishDocsToConfluence {
                 throw new RuntimeException("No page id: provide a Confluence page URL with pageId, "
                         + "or add :confluency-id: to " + file.getFileName());
             }
-            RenderResult result = render(file, doc, index);
+            RenderResult result = render(file, doc, index, client.getSpaceKey(pageId));
             PageVersion version = client.getPage(pageId);
             uploadAttachments(client, pageId, result.images());
             // Заголовок страницы сохраняем как есть — обновляем только тело.
@@ -137,7 +137,7 @@ public final class PublishDocsToConfluence {
         // Фаза 1: страницы папок по index.adoc, сверху вниз — родитель резолвится раньше детей.
         Map<Path, String> folderPage = new HashMap<>();
         folderPage.put(dir, rootPageId);
-        resolveRootIndex(client, dir, rootPageId, rootPage.title(), index, counts);
+        resolveRootIndex(client, dir, rootPageId, rootPage.title(), space, index, counts);
         for (Path folder : folderTree(dir, files)) {
             if (folder.equals(dir)) {
                 continue;
@@ -182,7 +182,8 @@ public final class PublishDocsToConfluence {
      * (заголовок родителя сохраняем) и дописываем id; нет файла → создаём трекинг-файл, тело родителя не трогаем.
      */
     private void resolveRootIndex(ConfluenceClient client, Path dir, String parentId, String parentTitle,
-                                  AnchorIndex index, Counts counts) throws IOException, InterruptedException {
+                                  String spaceKey, AnchorIndex index, Counts counts)
+            throws IOException, InterruptedException {
         Path indexFile = dir.resolve(INDEX_FILE);
         if (!Files.exists(indexFile)) {
             String title = parentTitle == null || parentTitle.isBlank() ? "index" : parentTitle;
@@ -199,7 +200,7 @@ public final class PublishDocsToConfluence {
             if (attribute(doc, ID_ATTRIBUTE) == null) {
                 writeBackConfluencyId(indexFile, parentId);
             }
-            RenderResult result = render(indexFile, doc, index);
+            RenderResult result = render(indexFile, doc, index, spaceKey);
             updateBody(client, parentId, result.xhtml());
             uploadAttachments(client, parentId, result.images());
             counts.updated++;
@@ -221,7 +222,7 @@ public final class PublishDocsToConfluence {
                 counts.skipped++;
                 return parentPageId;
             }
-            RenderResult result = render(indexFile, doc, index);
+            RenderResult result = render(indexFile, doc, index, space);
             String existingId = attribute(doc, ID_ATTRIBUTE);
             if (existingId != null && !existingId.isBlank()) {
                 updateBody(client, existingId, result.xhtml());
@@ -247,7 +248,7 @@ public final class PublishDocsToConfluence {
                 counts.skipped++;
                 return;
             }
-            RenderResult result = render(file, doc, index);
+            RenderResult result = render(file, doc, index, space);
             String existingId = attribute(doc, ID_ATTRIBUTE);
             if (existingId != null && !existingId.isBlank()) {
                 updateBody(client, existingId, result.xhtml());
@@ -263,8 +264,8 @@ public final class PublishDocsToConfluence {
         }
     }
 
-    private RenderResult render(Path file, Document doc, AnchorIndex index) {
-        return new StorageRenderer(PLANTUML_MACRO, file.getParent(), attribute(doc, "imagesdir"), index, file)
+    private RenderResult render(Path file, Document doc, AnchorIndex index, String spaceKey) {
+        return new StorageRenderer(PLANTUML_MACRO, file.getParent(), attribute(doc, "imagesdir"), index, file, spaceKey)
                 .render(doc);
     }
 

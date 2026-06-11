@@ -50,6 +50,26 @@ public class ConfluenceIncludeProcessorTest {
     }
 
     @Test
+    public void crossDocLinkIncludesSpaceKeyWhenProvided() throws Exception {
+        Path dir = tmp.getRoot().toPath();
+        Files.writeString(dir.resolve("other.adoc"),
+                "= Другая страница\n\nТекст.\n", StandardCharsets.UTF_8);
+        Path main = dir.resolve("main.adoc");
+        Files.writeString(main,
+                "= Главная\n\nСм. xref:other.adoc[обзор].\n", StandardCharsets.UTF_8);
+
+        RenderResult result;
+        try (AsciiDocParser parser = new AsciiDocParser()) {
+            Document document = parser.parse(main);
+            result = new StorageRenderer("plantuml", main.getParent(), "", AnchorIndex.empty(), main, "DS")
+                    .render(document);
+        }
+        // ri:page получает ri:space-key (нужен новому редактору Confluence)
+        assertTrue(result.xhtml(), result.xhtml().contains(
+                "<ri:page ri:content-title=\"Другая страница\" ri:space-key=\"DS\"/>"));
+    }
+
+    @Test
     public void sameNameAnchorInOtherFileBecomesPageLink() throws Exception {
         Path dir = tmp.getRoot().toPath();
         // термин csat живёт в отдельном файле как [[csat]]; в главной на него ссылаются <<csat>>

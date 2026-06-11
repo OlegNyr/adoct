@@ -48,14 +48,21 @@ final class InlineNormalizer {
     /** URL со схемой ({@code http:}, {@code https:}, {@code mailto:} и т.п.) — такие ссылки не трогаем. */
     private static final Pattern URL_SCHEME = Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.\\-]*:");
 
+    /** Инлайн-картинка от {@code image:x[]}: AsciiDoctor отдаёт {@code <img src=... alt=...>}. */
+    private static final Pattern IMG_TAG = Pattern.compile("<img\\b[^>]*?/?>", Pattern.CASE_INSENSITIVE);
+    private static final Pattern IMG_SRC = Pattern.compile("\\bsrc=\"([^\"]*)\"");
+    private static final Pattern IMG_ALT = Pattern.compile("\\balt=\"([^\"]*)\"");
+
     private final Path baseDir;
     private final AnchorIndex anchorIndex;
     private final Path currentFile;
+    private final String spaceKey;
 
-    InlineNormalizer(Path baseDir, AnchorIndex anchorIndex, Path currentFile) {
+    InlineNormalizer(Path baseDir, AnchorIndex anchorIndex, Path currentFile, String spaceKey) {
         this.baseDir = baseDir;
         this.anchorIndex = anchorIndex == null ? AnchorIndex.empty() : anchorIndex;
         this.currentFile = currentFile == null ? null : currentFile.toAbsolutePath().normalize();
+        this.spaceKey = spaceKey == null ? "" : spaceKey;
     }
 
     /** Нормализует фрагмент; найденные локальные файлы добавляет в {@code attachments}. */
@@ -68,7 +75,35 @@ final class InlineNormalizer {
         s = replaceAll(ANCHOR_DEF, s, m -> StorageFormat.anchorMacro(m.group(1)));
         s = replaceAll(INTERNAL_LINK, s, m -> internalLink(m.group(1), m.group(2)));
         s = replaceAll(FILE_LINK, s, m -> fileLink(m.group(1), m.group(2), m.group(), attachments));
+        s = replaceAll(IMG_TAG, s, m -> inlineImage(m.group(), attachments));
         return s;
+    }
+
+    /**
+     * Инлайн-картинка {@code <img src=...>}. Внешний URL → {@code ac:image} с {@code ri:url}; существующий
+     * локальный файл → файл во вложения + {@code ac:image} с {@code ri:attachment}; несуществующий локальный
+     * путь — оставляем тег как есть. {@code src} уже содержит {@code imagesdir} (его подставил AsciiDoctor).
+     */
+    private String inlineImage(String imgTag, List<Path> attachments) {
+        String src = attribute(IMG_SRC, imgTag);
+        if (src == null || src.isBlank()) {
+            return imgTag;
+        }
+        String alt = attribute(IMG_ALT, imgTag);
+        if (URL_SCHEME.matcher(src).find() || src.startsWith("//")) {
+            return StorageFormat.inlineImageUrl(src, alt);
+        }
+        Path resolved = resolveDoc(src);
+        if (!Files.isRegularFile(resolved)) {
+            return imgTag;
+        }
+        attachments.add(resolved);
+        return StorageFormat.inlineImageAttachment(resolved.getFileName().toString(), alt);
+    }
+
+    private static String attribute(Pattern pattern, String tag) {
+        Matcher m = pattern.matcher(tag);
+        return m.find() ? m.group(1) : null;
     }
 
     /**
@@ -90,7 +125,7 @@ final class InlineNormalizer {
     private String crossDocLink(String path, String anchor, String body) {
         String title = AdocPageTitle.fromFileOrName(resolveDoc(path), path);
         String text = body == null || body.isBlank() ? title : body;
-        return StorageFormat.pageLink(title, anchor, text);
+        return StorageFormat.pageLink(title, anchor, spaceKey, text);
     }
 
     /**
@@ -101,7 +136,7 @@ final class InlineNormalizer {
         String text = body == null || body.isBlank() ? anchor : body;
         AnchorIndex.Target target = anchorIndex.lookup(anchor);
         if (target != null && !target.file().equals(currentFile)) {
-            return StorageFormat.pageLink(target.title(), anchor, text);
+            return StorageFormat.pageLink(target.title(), anchor, spaceKey, text);
         }
         return StorageFormat.anchorLink(anchor, text);
     }
