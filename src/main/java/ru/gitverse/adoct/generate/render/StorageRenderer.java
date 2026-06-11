@@ -191,7 +191,9 @@ public final class StorageRenderer {
             for (Cell cell : row.getCells()) {
                 boolean th = headerSection || "header".equals(cell.getStyle());
                 String tag = th ? "th" : "td";
-                sink.append(cellOpenTag(tag, cell)).append(cellText(cell, sink)).append("</").append(tag).append(">");
+                sink.append(cellOpenTag(tag, cell));
+                renderCellContent(cell, sink);
+                sink.append("</").append(tag).append(">");
             }
             sink.append("</tr>");
         }
@@ -333,8 +335,16 @@ public final class StorageRenderer {
         }
     }
 
-    private String cellText(Cell cell, RenderSink sink) {
-        return inline(cell.getText(), sink);
+    /**
+     * Содержимое ячейки. AsciiDoc-ячейка ({@code a|}) рендерится полноценно — её вложенные блоки
+     * (списки, абзацы, вложенные таблицы) через внутренний документ; обычная ячейка — инлайн-текст.
+     */
+    private void renderCellContent(Cell cell, RenderSink sink) {
+        if ("asciidoc".equals(cell.getStyle()) && cell.getInnerDocument() != null) {
+            renderBlocks(cell.getInnerDocument().getBlocks(), sink);
+        } else {
+            sink.append(inline(cell.getText(), sink));
+        }
     }
 
     /** Текст элемента списка; у элементов без текста (только вложенные блоки) {@code getText()} может вернуть null. */

@@ -48,6 +48,21 @@ public class TableRenderTest extends AbstractStorageRendererTest {
     }
 
     @Test
+    public void asciidocCellRendersNestedBlocks() {
+        String adoc = """
+                [cols="1"]
+                |===
+                |просто текст
+                a|* пункт один
+                * пункт два
+                |===
+                """;
+        String xhtml = render(adoc).xhtml();
+        // rich-ячейка a| рендерит вложенный список, а не плоский текст
+        assertContains(xhtml, "<ul><li>пункт один</li><li>пункт два</li></ul>");
+    }
+
+    @Test
     public void footerAndCaptionAndWidth() {
         String adoc = """
                 .Подпись
