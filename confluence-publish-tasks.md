@@ -140,34 +140,14 @@
 - **Файлы.** `ConfluenceClient`, `PublishDocsToConfluence`.
 - **Тест.** Хэш-хелпер (чистый) юнит-тестом; REST — вручную.
 
-### [ ] C2. Прочая устойчивость REST
+### [x] C2. Прочая устойчивость REST
+> Сделано: `HttpClient` connect-timeout 30s, request-timeout 60s; `ensureSuccess` извлекает `message` из JSON-ошибки Confluence (`errorReason`). Тест `ConfluenceClientTest`. Rate-limit НЕ делал (для одиночной публикации/папки не нужен; потребовал бы Guava). Пагинация — не нужна (детей не листаем).
 - **Как у них** (`ConfluenceRestV1Client.java`): пагинация дочерних (limit=25), Guava RateLimiter
   (`maxRequestsPerSecond`), proxy с auth, таймауты, богатые ошибки (тело ответа + message из JSON),
   Bearer/Basic (у нас только Bearer — ок для PAT).
 - **Что делать.** По необходимости: богатые ошибки (включать тело ответа — у нас уже частично есть),
   таймауты на `HttpClient`, опц. rate-limit. Пагинация нужна только если будем листать детей (для orphan).
 - **Файлы.** `ConfluenceClient`.
-
-### [ ] C3. Orphan removal (опционально)
-- **Как у них** (`OrphanRemovalStrategy`): рекурсивно удаляют со стороны Confluence страницы-дети, которых нет
-  в источнике. Требует листинга детей (пагинация) + delete.
-- **Решение.** Обсудить: нужна ли нам синхронизация-удаление. По умолчанию — НЕ удалять (безопаснее).
-
----
-
-## D. Стратегия: перевод конвертера на Slim-шаблоны. ОТДЕЛЬНО, КРУПНО.
-
-### [ ] D1. Шаблонный бэкенд вместо Java-обхода
-- **Суть.** `Options.builder().backend("xhtml5").templateDirs(dir)` + набор `.slim` на тип узла (как у них).
-  AsciiDoctor сам рендерит storage-XHTML; Java остаётся только пост-обработка (сбор вложений, резолв
-  cross-ref по `.adoc`→title, unescape CDATA) — см. `AsciidocConfluencePage.convertedContent`.
-- **Выгода.** Уходит ручной `StorageRenderer` + jsoup-починка; «бесплатно» получаем инлайн/admonitions/
-  callouts/таблицы/выравнивание/TOC. Сильно меньше нашего кода и багов A1–A5/B*.
-- **⚠️ Риск/блокер.** `.slim` исполняется JRuby и требует gem'ы `slim`+`tilt` на load-path (AsciidoctorJ их не
-  тянет). Нужно решить, как поставлять (gem в ресурсах/`GEM_PATH`, либо ERB-шаблоны вместо Slim).
-- **Решение.** Сначала закрыть A1–A4 в текущем Java-рендерере (быстро, без JRuby). D1 — отдельным
-  исследовательским спайком: проверить подключение slim в нашей сборке (`runIde`/тест), оценить трудозатраты.
-  Если slim не заводится — рассмотреть ERB-шаблоны или остаться на Java-обходе.
 
 ---
 

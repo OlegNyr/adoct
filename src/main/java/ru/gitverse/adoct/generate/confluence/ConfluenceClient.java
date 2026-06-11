@@ -14,6 +14,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -26,9 +27,12 @@ public final class ConfluenceClient {
 
     private static final String MULTIPART_BOUNDARY = "----confluentMultipartBoundary7d01f";
 
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
+
     private final String baseUrl;
     private final String token;
-    private final HttpClient http = HttpClient.newHttpClient();
+    private final HttpClient http = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
     private final ObjectMapper mapper = new ObjectMapper();
 
     public ConfluenceClient(String baseUrl, String token) {
@@ -197,6 +201,7 @@ public final class ConfluenceClient {
 
     private HttpRequest.Builder baseRequest(String path) {
         return HttpRequest.newBuilder(URI.create(baseUrl + path))
+                .timeout(REQUEST_TIMEOUT)
                 .header("Authorization", "Bearer " + token);
     }
 
@@ -215,7 +220,22 @@ public final class ConfluenceClient {
     private static void ensureSuccess(HttpResponse<String> response, String action) throws IOException {
         int code = response.statusCode();
         if (code < 200 || code >= 300) {
-            throw new IOException("Не удалось " + action + ": HTTP " + code + " — " + response.body());
+            String reason = errorReason(response.body());
+            throw new IOException("Не удалось " + action + ": HTTP " + code + " — "
+                    + (reason != null ? reason : response.body()));
+        }
+    }
+
+    /** Достаёт человекочитаемое поле {@code message} из JSON-тела ошибки Confluence, иначе {@code null}. */
+    static String errorReason(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode message = new ObjectMapper().readTree(responseBody).get("message");
+            return message != null && message.isTextual() ? message.asText() : null;
+        } catch (IOException e) {
+            return null;
         }
     }
 }
