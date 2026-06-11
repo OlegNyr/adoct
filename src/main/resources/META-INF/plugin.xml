@@ -8,49 +8,39 @@
     <resource-bundle>messages.Bundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow id="File Importer"
-                    anchor="right"
-                    factoryClass="org.tools.asciidoc.plugins.idea.ui.FileImporterToolWindowFactory"
-                    icon="AllIcons.Actions.Download"
-                    showStripeButton="false"/>
         <toolWindow id="Confluence Export"
                     anchor="right"
-                    factoryClass="org.tools.asciidoc.plugins.idea.ui.ConfluenceExportToolWindowFactory"
+                    factoryClass="ru.gitverse.adoct.plugins.idea.ui.ConfluenceExportToolWindowFactory"
                     icon="AllIcons.Actions.Upload"
                     showStripeButton="false"/>
         <toolWindow id="Confluence Import"
                     anchor="right"
-                    factoryClass="org.tools.asciidoc.plugins.idea.ui.ConfluenceImportToolWindowFactory"
+                    factoryClass="ru.gitverse.adoct.plugins.idea.ui.ConfluenceImportToolWindowFactory"
                     icon="AllIcons.Actions.Upload"
                     showStripeButton="false"/>
         <applicationConfigurable
-                id="org.tools.asciidoc.plugins.idea.settings.confluence"
+                id="ru.gitverse.adoct.plugins.idea.settings.confluence"
                 parentId="tools"
                 displayName="AsciiDocTools Confluence"
-                instance="org.tools.asciidoc.plugins.idea.settings.ConfluenceSettingsConfigurable"/>
+                instance="ru.gitverse.adoct.plugins.idea.settings.ConfluenceSettingsConfigurable"/>
         <notificationGroup id="AsciiDocTools.Notifications"
                            displayType="BALLOON"
                            isLogByDefault="true"/>
     </extensions>
 
     <actions>
-        <action id="FileImporter.ShowToolWindow"
-                class="org.tools.asciidoc.plugins.idea.action.ShowFileImporterAction">
-            <add-to-group group-id="ToolsMenu" anchor="last"/>
-            <keyboard-shortcut keymap="$default" first-keystroke="alt I"/>
-        </action>
         <action id="ConfluenceExport.ShowToolWindow"
-                class="org.tools.asciidoc.plugins.idea.action.ShowConfluenceExportToolWindowAction">
+                class="ru.gitverse.adoct.plugins.idea.action.ShowConfluenceExportToolWindowAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="alt shift I"/>
         </action>
         <action id="ConfluenceImport.ShowToolWindow"
-                class="org.tools.asciidoc.plugins.idea.action.ShowConfluenceImportToolWindowAction">
+                class="ru.gitverse.adoct.plugins.idea.action.ShowConfluenceImportToolWindowAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="alt shift P"/>
         </action>
         <action id="AsciiDocTools.AnonymizeExport"
-                class="org.tools.asciidoc.plugins.idea.action.AnonymizeExportAction">
+                class="ru.gitverse.adoct.plugins.idea.action.AnonymizeExportAction">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>

@@ -10,6 +10,8 @@ import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Источник согласованных подменных данных для анонимизации экспорта Confluence.
@@ -35,11 +37,19 @@ public class Anonymizer {
             "задача", "шаг", "этап", "проверка", "контроль", "доступ", "роль", "право"
     };
 
+    /**
+     * Слово-«содержимое»: 2+ буквы, не часть имени макроса/атрибута (не перед {@code :}) и не часть
+     * расширения файла (не сразу после {@code .}). Так разметка AsciiDoc и Confluence-storage
+     * (имена тегов, {@code image::}, схемы URL, расширения) переживает обфускацию, а текст — нет.
+     */
+    private static final Pattern WORD_RUN = Pattern.compile("(?<![\\p{L}.])\\p{L}{2,}+(?!:)");
+
     private final Random random;
     private final Faker faker;
     private final AtomicInteger fileCounter = new AtomicInteger();
 
     private final Map<String, String> names = new ConcurrentHashMap<>();
+    private final Map<String, String> wordCache = new ConcurrentHashMap<>();
     private final Map<String, String> logins = new ConcurrentHashMap<>();
     private final Map<String, String> userKeys = new ConcurrentHashMap<>();
     private final Map<String, String> titles = new ConcurrentHashMap<>();
@@ -164,6 +174,28 @@ public class Anonymizer {
                 sb.append(words(count));
             }
         }
+        return sb.toString();
+    }
+
+    /**
+     * Обфусцирует «словесные» фрагменты строки, сохраняя всю не-буквенную разметку
+     * ({@code = == ---- |=== * _ :: << >> [ ] |} и т.п.), цифры, расширения файлов и имена
+     * макросов/атрибутов (см. {@link #WORD_RUN}). Подмена согласована: одинаковое исходное слово
+     * всегда заменяется одним и тем же подставным, поэтому повторяющиеся термины и якоря/ссылки
+     * остаются связными. Применяется к строкам AsciiDoc (заголовки, текст, тело кода).
+     */
+    public String scrubWords(String text) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+        Matcher matcher = WORD_RUN.matcher(text);
+        StringBuilder sb = new StringBuilder(text.length());
+        while (matcher.find()) {
+            String word = matcher.group();
+            String replaced = wordCache.computeIfAbsent(word, k -> WORDS[random.nextInt(WORDS.length)]);
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(replaced));
+        }
+        matcher.appendTail(sb);
         return sb.toString();
     }
 

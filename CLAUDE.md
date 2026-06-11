@@ -22,7 +22,7 @@ Dependencies resolve from public repositories only: Maven Central + the Gradle P
 
 Two source roots with distinct responsibilities:
 
-- `org.tools.asciidoc.plugins.idea.*` — the **IntelliJ plugin layer** (UI, actions, settings, services). This is glue: tool windows, the `Alt+I`/`Alt+Shift+I` actions, a `Configurable` for Confluence server settings, and `ConvertDocsUrlToAdoc` (an app-level `@Service` that wires settings → client → converter behind a `ProgressIndicator`). Registered in `src/main/resources/META-INF/plugin.xml`.
+- `ru.gitverse.adoct.plugins.idea.*` — the **IntelliJ plugin layer** (UI, actions, settings, services). This is glue: tool windows, the `Alt+I`/`Alt+Shift+I` actions, a `Configurable` for Confluence server settings, and `ConvertDocsUrlToAdoc` (an app-level `@Service` that wires settings → client → converter behind a `ProgressIndicator`). Registered in `src/main/resources/META-INF/plugin.xml`.
 - `ru.gitverse.adoct.*` — the **conversion engine**, fully decoupled from IntelliJ APIs so it can be unit-tested standalone.
 
 ### Conversion flow

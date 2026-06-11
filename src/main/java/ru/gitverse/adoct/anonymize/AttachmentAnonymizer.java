@@ -57,8 +57,21 @@ public class AttachmentAnonymizer {
 
     @SneakyThrows
     private void processFile(Path file, Path destinationDir) {
+        anonymizeContentTo(file, destinationDir.resolve(anon.fileName(file.getFileName().toString())));
+    }
+
+    /**
+     * Анонимизирует содержимое одного файла в заданный {@code target} (имя берётся как есть, без
+     * переименования — чтобы ссылки на вложение из {@code .adoc} продолжали резолвиться при
+     * воспроизведении). Картинка → плейсхолдер того же размера, drawio-XML → подписи вычищаются,
+     * прочее → короткая заглушка.
+     */
+    @SneakyThrows
+    public void anonymizeContentTo(Path file, Path target) {
+        if (target.getParent() != null) {
+            Files.createDirectories(target.getParent());
+        }
         String originalName = file.getFileName().toString();
-        Path target = destinationDir.resolve(anon.fileName(originalName));
         byte[] bytes = Files.readAllBytes(file);
         if (isImage(originalName, bytes)) {
             writePlaceholderImage(bytes, target);

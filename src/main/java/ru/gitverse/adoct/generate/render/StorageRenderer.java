@@ -127,7 +127,9 @@ public final class StorageRenderer {
                 .append("</p>");
     }
 
-    /** Роль выравнивания AsciiDoc → инлайн-стиль Confluence; {@code null}, если роль не про выравнивание. */
+    /**
+     * Роль выравнивания AsciiDoc → инлайн-стиль Confluence; {@code null}, если роль не про выравнивание.
+     */
     private static String alignmentStyle(String role) {
         if (role == null) {
             return null;
@@ -200,7 +202,9 @@ public final class StorageRenderer {
         sink.append("</").append(sectionTag).append(">");
     }
 
-    /** Открывающий тег ячейки с colspan/rowspan (если > 1). */
+    /**
+     * Открывающий тег ячейки с colspan/rowspan (если > 1).
+     */
     private static String cellOpenTag(String tag, Cell cell) {
         StringBuilder sb = new StringBuilder("<").append(tag);
         if (cell.getColspan() > 1) {
@@ -222,13 +226,17 @@ public final class StorageRenderer {
                 node.getTitle(), node, sink);
     }
 
-    /** Example-блок: {@code [%collapsible]} → макрос {@code expand}, иначе → {@code tip} (как в Confluence Publisher). */
+    /**
+     * Example-блок: {@code [%collapsible]} → макрос {@code expand}, иначе → {@code tip} (как в Confluence Publisher).
+     */
     private void renderExample(StructuralNode node, RenderSink sink) {
         boolean collapsible = node.getAttribute("collapsible-option") != null;
         renderRichMacro(collapsible ? "expand" : "tip", node.getTitle(), node, sink);
     }
 
-    /** Цитата → {@code <blockquote>} с телом и (опц.) атрибуцией. */
+    /**
+     * Цитата → {@code <blockquote>} с телом и (опц.) атрибуцией.
+     */
     private void renderQuote(StructuralNode node, RenderSink sink) {
         sink.append("<blockquote>");
         if (node.getBlocks() != null && !node.getBlocks().isEmpty()) {
@@ -240,19 +248,25 @@ public final class StorageRenderer {
         sink.append("</blockquote>");
     }
 
-    /** Verse ({@code [verse]}) → {@code <pre>} (сохраняет переносы строк) + (опц.) атрибуция. */
+    /**
+     * Verse ({@code [verse]}) → {@code <pre>} (сохраняет переносы строк) + (опц.) атрибуция.
+     */
     private void renderVerse(StructuralNode node, RenderSink sink) {
         sink.append("<pre>").append(inline(content(node), sink)).append("</pre>");
         appendAttribution(node, sink);
     }
 
-    /** Дискретный заголовок ({@code [discrete]}) → {@code <hN>} без секции/якоря. */
+    /**
+     * Дискретный заголовок ({@code [discrete]}) → {@code <hN>} без секции/якоря.
+     */
     private void renderFloatingTitle(StructuralNode node, RenderSink sink) {
         int level = Math.min(Math.max(node.getLevel(), 1), 6);
         sink.append("<h" + level + ">").append(inline(node.getTitle(), sink)).append("</h" + level + ">");
     }
 
-    /** Атрибуция цитаты/verse: {@code attribution[, citetitle]} → {@code <p>— ...</p>}. */
+    /**
+     * Атрибуция цитаты/verse: {@code attribution[, citetitle]} → {@code <p>— ...</p>}.
+     */
     private void appendAttribution(StructuralNode node, RenderSink sink) {
         String attribution = strAttr(node, "attribution");
         String citation = strAttr(node, "citetitle");
@@ -263,7 +277,9 @@ public final class StorageRenderer {
         }
     }
 
-    /** Структурный макрос с {@code rich-text-body} (admonition/example/sidebar): тело — вложенные блоки или инлайн. */
+    /**
+     * Структурный макрос с {@code rich-text-body} (admonition/example/sidebar): тело — вложенные блоки или инлайн.
+     */
     private void renderRichMacro(String macroName, String title, StructuralNode node, RenderSink sink) {
         sink.append("<ac:structured-macro ac:name=\"").append(macroName).append("\">");
         if (title != null && !title.isBlank()) {
@@ -322,7 +338,9 @@ public final class StorageRenderer {
         return value == null ? null : value.toString();
     }
 
-    /** Значение {@code :toclevels:} документа (по умолчанию 2). */
+    /**
+     * Значение {@code :toclevels:} документа (по умолчанию 2).
+     */
     private static int tocLevels(StructuralNode node) {
         Object value = node.getDocument().getAttribute("toclevels");
         if (value == null) {
@@ -347,7 +365,9 @@ public final class StorageRenderer {
         }
     }
 
-    /** Текст элемента списка; у элементов без текста (только вложенные блоки) {@code getText()} может вернуть null. */
+    /**
+     * Текст элемента списка; у элементов без текста (только вложенные блоки) {@code getText()} может вернуть null.
+     */
     private String itemText(ListItem item, RenderSink sink) {
         return item.hasText() ? inline(item.getText(), sink) : "";
     }

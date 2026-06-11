@@ -1,6 +1,7 @@
 package ru.gitverse.adoct;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.SneakyThrows;
@@ -33,6 +34,9 @@ public class DispatcherPage {
     private final ObjectMapper objectMapper;
     @Setter
     private boolean exportColors;
+    /** Каталог выгрузки текущей страницы (для баг-репорта при падении). {@code null} до его создания. */
+    @Getter
+    private Path destination;
 
     @SneakyThrows
     public String generate(String id, ProgressCallback progressCallback) {
@@ -40,6 +44,7 @@ public class DispatcherPage {
         progressCallback.next("Загрузка основной страницы", 0.2D);
         ContentPage mainPage = client.getMainPage(id);
         Path destination = basePath.resolve(mainPage.title());
+        this.destination = destination;
         Files.createDirectories(destination);
         ConvertStorageToAdoc converter = new ConvertStorageToAdoc(mainPage.content(), mainPage.view(), destination);
 
