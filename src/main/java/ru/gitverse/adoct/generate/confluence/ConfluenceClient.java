@@ -163,6 +163,38 @@ public final class ConfluenceClient {
         ensureSuccess(response, "проставить метки страницы " + pageId);
     }
 
+    /** Значение content-property страницы по ключу, либо {@code null}, если свойства нет (404). */
+    public String getProperty(String pageId, String key) throws IOException, InterruptedException {
+        HttpRequest request = baseRequest("/rest/api/content/" + pageId + "/property/" + key).GET().build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        if (response.statusCode() == 404) {
+            return null;
+        }
+        ensureSuccess(response, "получить свойство " + key + " страницы " + pageId);
+        JsonNode value = mapper.readTree(response.body()).path("value");
+        return value.isMissingNode() || value.isNull() ? null : value.asText();
+    }
+
+    /** Создаёт/перезаписывает content-property (delete + create, чтобы не вести версии свойства). */
+    public void setProperty(String pageId, String key, String value) throws IOException, InterruptedException {
+        deleteProperty(pageId, key);
+        ObjectNode payload = mapper.createObjectNode();
+        payload.put("key", key);
+        payload.put("value", value);
+        HttpRequest request = baseRequest("/rest/api/content/" + pageId + "/property")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload), StandardCharsets.UTF_8))
+                .build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        ensureSuccess(response, "записать свойство " + key + " страницы " + pageId);
+    }
+
+    /** Удаляет content-property; отсутствие свойства (404) не считается ошибкой. */
+    public void deleteProperty(String pageId, String key) throws IOException, InterruptedException {
+        HttpRequest request = baseRequest("/rest/api/content/" + pageId + "/property/" + key).DELETE().build();
+        http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+
     private HttpRequest.Builder baseRequest(String path) {
         return HttpRequest.newBuilder(URI.create(baseUrl + path))
                 .header("Authorization", "Bearer " + token);

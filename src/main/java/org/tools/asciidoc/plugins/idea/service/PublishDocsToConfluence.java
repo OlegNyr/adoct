@@ -21,6 +21,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -59,6 +61,8 @@ public final class PublishDocsToConfluence {
     private static final String ID_ATTRIBUTE = "confluency-id";
     private static final String IGNORE = "ignore";
     private static final String INDEX_FILE = "index.adoc";
+    private static final String CONTENT_HASH_KEY = "content-hash";
+    private static final String ATTACHMENT_HASH_SUFFIX = "-attachment-hash";
     private static final Pattern PAGE_ID = Pattern.compile("pageId=(\\d+)");
 
     /** Счётчики итога публикации папки. */
@@ -113,13 +117,11 @@ public final class PublishDocsToConfluence {
                         + "or add :confluency-id: to " + file.getFileName());
             }
             RenderResult result = render(file, doc, index, client.getSpaceKey(pageId));
-            PageVersion version = client.getPage(pageId);
+            boolean changed = updateBody(client, pageId, result.xhtml());
             uploadAttachments(client, pageId, result.images());
-            // Заголовок страницы сохраняем как есть — обновляем только тело.
-            client.updatePage(pageId, version.title(), result.xhtml(), version.number() + 1);
             applyLabels(client, pageId, doc);
             indicator.setFraction(1.0);
-            return "Published " + file.getFileName() + " to page " + pageId;
+            return (changed ? "Published " : "Unchanged ") + file.getFileName() + " (page " + pageId + ")";
         }
     }
 
@@ -203,10 +205,14 @@ public final class PublishDocsToConfluence {
                 writeBackConfluencyId(indexFile, parentId);
             }
             RenderResult result = render(indexFile, doc, index, spaceKey);
-            updateBody(client, parentId, result.xhtml());
+            boolean changed = updateBody(client, parentId, result.xhtml());
             uploadAttachments(client, parentId, result.images());
             applyLabels(client, parentId, doc);
-            counts.updated++;
+            if (changed) {
+                counts.updated++;
+            } else {
+                counts.skipped++;
+            }
         }
     }
 
@@ -228,14 +234,19 @@ public final class PublishDocsToConfluence {
             RenderResult result = render(indexFile, doc, index, space);
             String existingId = attribute(doc, ID_ATTRIBUTE);
             if (existingId != null && !existingId.isBlank()) {
-                updateBody(client, existingId, result.xhtml());
+                boolean changed = updateBody(client, existingId, result.xhtml());
                 uploadAttachments(client, existingId, result.images());
                 applyLabels(client, existingId, doc);
-                counts.updated++;
+                if (changed) {
+                    counts.updated++;
+                } else {
+                    counts.skipped++;
+                }
                 return existingId;
             }
             String title = AdocPageTitle.fromFileOrName(indexFile, folder.getFileName().toString());
             String newId = client.createPage(space, parentPageId, title, result.xhtml());
+            rememberContentHash(client, newId, result.xhtml());
             writeBackConfluencyId(indexFile, newId);
             uploadAttachments(client, newId, result.images());
             applyLabels(client, newId, doc);
@@ -256,14 +267,19 @@ public final class PublishDocsToConfluence {
             RenderResult result = render(file, doc, index, space);
             String existingId = attribute(doc, ID_ATTRIBUTE);
             if (existingId != null && !existingId.isBlank()) {
-                updateBody(client, existingId, result.xhtml());
+                boolean changed = updateBody(client, existingId, result.xhtml());
                 uploadAttachments(client, existingId, result.images());
                 applyLabels(client, existingId, doc);
-                counts.updated++;
+                if (changed) {
+                    counts.updated++;
+                } else {
+                    counts.skipped++;
+                }
                 return;
             }
             String title = AdocPageTitle.fromFileOrName(file, file.getFileName().toString());
             String newId = client.createPage(space, parentPageId, title, result.xhtml());
+            rememberContentHash(client, newId, result.xhtml());
             writeBackConfluencyId(file, newId);
             uploadAttachments(client, newId, result.images());
             applyLabels(client, newId, doc);
@@ -276,21 +292,60 @@ public final class PublishDocsToConfluence {
                 .render(doc);
     }
 
-    /** Обновляет только тело страницы, сохраняя текущий заголовок. */
-    private void updateBody(ConfluenceClient client, String pageId, String xhtml)
+    /**
+     * Обновляет тело страницы, сохраняя текущий заголовок, ТОЛЬКО если контент изменился (sha256 тела
+     * хранится в content-property {@code content-hash}). Возвращает {@code true}, если обновление было.
+     */
+    private boolean updateBody(ConfluenceClient client, String pageId, String xhtml)
             throws IOException, InterruptedException {
+        String newHash = sha256(xhtml.getBytes(StandardCharsets.UTF_8));
+        if (newHash.equals(client.getProperty(pageId, CONTENT_HASH_KEY))) {
+            return false;
+        }
         PageVersion version = client.getPage(pageId);
         client.updatePage(pageId, version.title(), xhtml, version.number() + 1);
+        client.setProperty(pageId, CONTENT_HASH_KEY, newHash);
+        return true;
     }
 
+    /** Прописывает хэш тела новой странице (чтобы следующий прогон корректно сравнивал). */
+    private void rememberContentHash(ConfluenceClient client, String pageId, String xhtml)
+            throws IOException, InterruptedException {
+        client.setProperty(pageId, CONTENT_HASH_KEY, sha256(xhtml.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    /** Загружает вложения, пропуская неизменённые (sha256 файла хранится в content-property по имени). */
     private void uploadAttachments(ConfluenceClient client, String pageId, List<Path> attachments)
             throws IOException, InterruptedException {
         for (Path attachment : attachments) {
-            if (Files.isRegularFile(attachment)) {
-                client.uploadAttachment(pageId, attachment);
-            } else {
+            if (!Files.isRegularFile(attachment)) {
                 log.warn("Attachment not found, skipped: {}", attachment);
+                continue;
             }
+            String key = attachmentHashKey(attachment.getFileName().toString());
+            String newHash = sha256(Files.readAllBytes(attachment));
+            if (newHash.equals(client.getProperty(pageId, key))) {
+                continue;
+            }
+            client.uploadAttachment(pageId, attachment);
+            client.setProperty(pageId, key, newHash);
+        }
+    }
+
+    private static String attachmentHashKey(String fileName) {
+        return sha256(fileName.getBytes(StandardCharsets.UTF_8)) + ATTACHMENT_HASH_SUFFIX;
+    }
+
+    static String sha256(byte[] bytes) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 unavailable", e);
         }
     }
 

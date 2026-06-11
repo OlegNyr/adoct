@@ -2,6 +2,7 @@ package org.tools.asciidoc.plugins.idea.service;
 
 import org.junit.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -49,6 +50,13 @@ public class PublishDocsToConfluenceTest {
     public void parseKeywordsEmptyWhenNullOrBlank() {
         assertTrue(PublishDocsToConfluence.parseKeywords(null).isEmpty());
         assertTrue(PublishDocsToConfluence.parseKeywords("  ").isEmpty());
+    }
+
+    @Test
+    public void sha256MatchesKnownVector() {
+        // SHA-256("abc") — стандартный тест-вектор
+        assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+                PublishDocsToConfluence.sha256("abc".getBytes(StandardCharsets.UTF_8)));
     }
 
     @Test

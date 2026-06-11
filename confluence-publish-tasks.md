@@ -126,7 +126,8 @@
 
 ## C. Надёжность публикации (клиент). СРЕДНИЙ/ВЫСОКИЙ ПРИОРИТЕТ для прод-использования.
 
-### [ ] C1. Дельта-выгрузка по content-hash (самое ценное)
+### [x] C1. Дельта-выгрузка по content-hash (самое ценное)
+> Сделано: `ConfluenceClient.getProperty/setProperty/deleteProperty` (content-property, set = delete+create). `PublishDocsToConfluence`: `updateBody` сравнивает sha256 тела с `content-hash` и пропускает неизменённое (без version-bump); новые страницы получают хэш (`rememberContentHash`); `uploadAttachments` пропускает вложения с совпавшим хэшом (ключ `sha256(filename)+"-attachment-hash"`). Итог считает `skipped`. Юнит-тест `sha256MatchesKnownVector`; REST — вручную.
 - **Как у них** (`ConfluencePublisher.java`): sha256(контент) хранится как **page property** `content-hash`;
   перед update сравнивают существующий property с новым hash — если совпало и title тот же, **страницу
   не трогают** (нет version-bump, нет запроса). Аналогично per-attachment: ключ `hash(filename)+"-attachment-hash"`.
