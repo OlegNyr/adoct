@@ -18,6 +18,11 @@
                     factoryClass="org.tools.asciidoc.plugins.idea.ui.ConfluenceExportToolWindowFactory"
                     icon="AllIcons.Actions.Upload"
                     showStripeButton="false"/>
+        <toolWindow id="Confluence Import"
+                    anchor="right"
+                    factoryClass="org.tools.asciidoc.plugins.idea.ui.ConfluenceImportToolWindowFactory"
+                    icon="AllIcons.Actions.Upload"
+                    showStripeButton="false"/>
         <applicationConfigurable
                 id="org.tools.asciidoc.plugins.idea.settings.confluence"
                 parentId="tools"
@@ -38,6 +43,11 @@
                 class="org.tools.asciidoc.plugins.idea.action.ShowConfluenceExportToolWindowAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="alt shift I"/>
+        </action>
+        <action id="ConfluenceImport.ShowToolWindow"
+                class="org.tools.asciidoc.plugins.idea.action.ShowConfluenceImportToolWindowAction">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="alt shift P"/>
         </action>
         <action id="AsciiDocTools.AnonymizeExport"
                 class="org.tools.asciidoc.plugins.idea.action.AnonymizeExportAction">

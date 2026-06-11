@@ -17,6 +17,7 @@ import ru.gitverse.adoct.generate.asciidoc.AnchorIndex;
 import ru.gitverse.adoct.generate.model.RenderResult;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -84,11 +85,11 @@ public final class StorageRenderer {
         String context = node.getContext();
         switch (context) {
             case "section" -> renderSection((Section) node, out, images);
-            case "paragraph" -> out.append("<p>").append(inline(content(node))).append("</p>");
+            case "paragraph" -> out.append("<p>").append(inline(content(node), images)).append("</p>");
             case "ulist" -> renderList(node, "ul", out, images);
             case "olist" -> renderList(node, "ol", out, images);
             case "dlist" -> renderDescriptionList((DescriptionList) node, out, images);
-            case "table" -> renderTable((Table) node, out);
+            case "table" -> renderTable((Table) node, out, images);
             case "image" -> renderImage(node, out, images);
             case "pass" -> out.append(content(node)); // raw passthrough (напр. макрос include от IncludeProcessor)
             case "listing", "literal" -> renderListing(node, out);
@@ -102,7 +103,7 @@ public final class StorageRenderer {
         // поэтому прогоняем через inline() (нормализация под storage format), а НЕ через escape()
         // — иначе теги заголовка экранируются и видны как литерал <code>…</code>.
         out.append("<h").append(level).append('>')
-                .append(inline(section.getTitle()))
+                .append(inline(section.getTitle(), images))
                 .append("</h").append(level).append('>');
         renderBlocks(section.getBlocks(), out, images);
     }
@@ -112,7 +113,7 @@ public final class StorageRenderer {
         for (StructuralNode item : node.getBlocks()) {
             ListItem li = (ListItem) item;
             out.append("<li>");
-            out.append(itemText(li));
+            out.append(itemText(li, images));
             // вложенные блоки (в т.ч. вложенные списки)
             renderBlocks(li.getBlocks(), out, images);
             out.append("</li>");
@@ -124,12 +125,12 @@ public final class StorageRenderer {
         out.append("<dl>");
         for (DescriptionListEntry entry : node.getItems()) {
             for (ListItem term : entry.getTerms()) {
-                out.append("<dt>").append(itemText(term)).append("</dt>");
+                out.append("<dt>").append(itemText(term, images)).append("</dt>");
             }
             ListItem description = entry.getDescription();
             if (description != null) {
                 out.append("<dd>");
-                out.append(itemText(description));
+                out.append(itemText(description, images));
                 // вложенные блоки описания (таблицы, списки через продолжение `+`)
                 renderBlocks(description.getBlocks(), out, images);
                 out.append("</dd>");
@@ -138,7 +139,7 @@ public final class StorageRenderer {
         out.append("</dl>");
     }
 
-    private void renderTable(Table table, StringBuilder out) {
+    private void renderTable(Table table, StringBuilder out, List<Path> images) {
         out.append("<table>");
         List<Row> header = table.getHeader();
         if (header != null && !header.isEmpty()) {
@@ -146,7 +147,7 @@ public final class StorageRenderer {
             for (Row row : header) {
                 out.append("<tr>");
                 for (Cell cell : row.getCells()) {
-                    out.append("<th>").append(cellText(cell)).append("</th>");
+                    out.append("<th>").append(cellText(cell, images)).append("</th>");
                 }
                 out.append("</tr>");
             }
@@ -156,7 +157,7 @@ public final class StorageRenderer {
         for (Row row : table.getBody()) {
             out.append("<tr>");
             for (Cell cell : row.getCells()) {
-                out.append("<td>").append(cellText(cell)).append("</td>");
+                out.append("<td>").append(cellText(cell, images)).append("</td>");
             }
             out.append("</tr>");
         }
@@ -197,13 +198,13 @@ public final class StorageRenderer {
         return c == null ? "" : c.toString();
     }
 
-    private String cellText(Cell cell) {
-        return inline(cell.getText());
+    private String cellText(Cell cell, List<Path> images) {
+        return inline(cell.getText(), images);
     }
 
     /** Текст элемента списка; у элементов без текста (только вложенные блоки) {@code getText()} может вернуть null. */
-    private String itemText(ListItem item) {
-        return item.hasText() ? inline(item.getText()) : "";
+    private String itemText(ListItem item, List<Path> images) {
+        return item.hasText() ? inline(item.getText(), images) : "";
     }
 
     /** Инлайн-якорь от {@code [[id]]}: AsciiDoctor отдаёт пустой {@code <a id="...">}. */
@@ -215,6 +216,12 @@ public final class StorageRenderer {
     /** Межфайловая ссылка от {@code <<file.adoc#id,текст>>}: {@code <a href="file.adoc#id">текст</a>}. */
     private static final Pattern CROSS_DOC_LINK = Pattern.compile(
             "<a href=\"([^\"#]+\\.adoc)(?:#([^\"]+))?\">(.*?)</a>", Pattern.CASE_INSENSITIVE);
+
+    /** Любая оставшаяся ссылка {@code <a href="X">текст</a>} (после .adoc и якорей) — внешняя или на локальный файл. */
+    private static final Pattern FILE_LINK = Pattern.compile("<a href=\"([^\"]+)\">(.*?)</a>");
+
+    /** URL со схемой ({@code http:}, {@code https:}, {@code mailto:} и т.п.) — такие ссылки не трогаем. */
+    private static final Pattern URL_SCHEME = Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.\\-]*:");
 
     /**
      * Нормализует инлайн-HTML от AsciiDoctor под storage format Confluence. Применяется только к
@@ -232,7 +239,7 @@ public final class StorageRenderer {
      *       Внешние ссылки ({@code href} без {@code #} и не {@code .adoc}) не трогаются.</li>
      * </ol>
      */
-    String inline(String html) {
+    String inline(String html, List<Path> attachments) {
         if (html == null || html.isEmpty()) {
             return "";
         }
@@ -240,7 +247,28 @@ public final class StorageRenderer {
         s = replaceAll(CROSS_DOC_LINK, s, m -> crossDocLink(m.group(1), m.group(2), m.group(3)));
         s = replaceAll(ANCHOR_DEF, s, m -> anchorMacro(m.group(1)));
         s = replaceAll(INTERNAL_LINK, s, m -> internalLink(m.group(1), m.group(2)));
+        s = replaceAll(FILE_LINK, s, m -> fileLink(m.group(1), m.group(2), m.group(), attachments));
         return s;
+    }
+
+    /**
+     * Оставшаяся {@code <a href>} (после обработки {@code .adoc}-ссылок и якорей). Если это относительная
+     * ссылка на существующий локальный файл — добавляем его во вложения и ссылаемся на attach Confluence;
+     * иначе (внешний URL со схемой или {@code //host}) оставляем ссылку как есть.
+     */
+    private String fileLink(String href, String body, String original, List<Path> attachments) {
+        if (URL_SCHEME.matcher(href).find() || href.startsWith("//")) {
+            return original;
+        }
+        Path resolved = resolveDoc(href);
+        if (!Files.isRegularFile(resolved)) {
+            return original;
+        }
+        attachments.add(resolved);
+        String fileName = resolved.getFileName().toString();
+        String text = body == null || body.isBlank() ? fileName : body;
+        return "<ac:link><ri:attachment ri:filename=\"" + escapeAttr(fileName) + "\"/>"
+                + "<ac:link-body>" + text + "</ac:link-body></ac:link>";
     }
 
     /**
