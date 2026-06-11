@@ -90,7 +90,10 @@ public final class StorageRenderer {
             case "colist" -> renderList(node, "ol", sink); // пояснения к callout'ам → нумерованный список
             case "example" -> renderExample(node, sink);
             case "quote" -> renderQuote(node, sink);
+            case "verse" -> renderVerse(node, sink);
             case "sidebar" -> renderRichMacro("panel", node.getTitle(), node, sink);
+            case "floating_title" -> renderFloatingTitle(node, sink);
+            case "thematic_break" -> sink.append("<hr/>");
             case "dlist" -> renderDescriptionList((DescriptionList) node, sink);
             case "table" -> renderTable((Table) node, sink);
             case "admonition" -> renderAdmonition(node, sink);
@@ -231,6 +234,24 @@ public final class StorageRenderer {
         } else {
             sink.append("<p>").append(inline(content(node), sink)).append("</p>");
         }
+        appendAttribution(node, sink);
+        sink.append("</blockquote>");
+    }
+
+    /** Verse ({@code [verse]}) → {@code <pre>} (сохраняет переносы строк) + (опц.) атрибуция. */
+    private void renderVerse(StructuralNode node, RenderSink sink) {
+        sink.append("<pre>").append(inline(content(node), sink)).append("</pre>");
+        appendAttribution(node, sink);
+    }
+
+    /** Дискретный заголовок ({@code [discrete]}) → {@code <hN>} без секции/якоря. */
+    private void renderFloatingTitle(StructuralNode node, RenderSink sink) {
+        int level = Math.min(Math.max(node.getLevel(), 1), 6);
+        sink.append("<h" + level + ">").append(inline(node.getTitle(), sink)).append("</h" + level + ">");
+    }
+
+    /** Атрибуция цитаты/verse: {@code attribution[, citetitle]} → {@code <p>— ...</p>}. */
+    private void appendAttribution(StructuralNode node, RenderSink sink) {
         String attribution = strAttr(node, "attribution");
         String citation = strAttr(node, "citetitle");
         String credit = attribution == null ? citation
@@ -238,7 +259,6 @@ public final class StorageRenderer {
         if (credit != null && !credit.isBlank()) {
             sink.append("<p>— ").append(StorageFormat.escapeText(credit)).append("</p>");
         }
-        sink.append("</blockquote>");
     }
 
     /** Структурный макрос с {@code rich-text-body} (admonition/example/sidebar): тело — вложенные блоки или инлайн. */

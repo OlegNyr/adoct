@@ -35,6 +35,28 @@ public class BlockRenderTest extends AbstractStorageRendererTest {
     }
 
     @Test
+    public void thematicBreakBecomesHr() {
+        String xhtml = render("первый\n\n'''\n\nвторой\n").xhtml();
+        assertContains(xhtml, "<hr/>");
+    }
+
+    @Test
+    public void floatingTitleBecomesHeading() {
+        String xhtml = render("[discrete]\n== Дискретный\n").xhtml();
+        assertContains(xhtml, "Дискретный</h1>");
+        // у дискретного заголовка нет якоря секции
+        assertNotContains(xhtml, "<h1><ac:structured-macro ac:name=\"anchor\">");
+    }
+
+    @Test
+    public void verseBecomesPreWithAttribution() {
+        String xhtml = render("[verse,Поэт]\n____\nстрока раз\nстрока два\n____\n").xhtml();
+        assertContains(xhtml, "<pre>");
+        assertContains(xhtml, "строка раз");
+        assertContains(xhtml, "— Поэт");
+    }
+
+    @Test
     public void calloutListBecomesOrderedList() {
         String adoc = """
                 [source,java]
