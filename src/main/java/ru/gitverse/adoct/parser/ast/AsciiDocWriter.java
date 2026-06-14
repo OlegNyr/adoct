@@ -146,6 +146,7 @@ public final class AsciiDocWriter {
             case Inline.Bold b -> "**" + inline(b.children()) + "**";
             case Inline.Italic i -> "__" + inline(i.children()) + "__";
             case Inline.Underline u -> "[.underline]##" + inline(u.children()) + "##";
+            case Inline.Mono m -> "`" + inline(m.children()) + "`";
             case Inline.Colored c -> "[." + c.color() + "]##" + inline(c.children()) + "##";
             case Inline.Link l -> "link:" + l.url() + "[" + inline(l.label()) + "]";
             case Inline.LineBreak ignored -> " +\n";

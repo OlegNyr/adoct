@@ -30,6 +30,21 @@ public class CleanOutputParserTest extends AbstractConvertParserTest {
     }
 
     @Test
+    public void emptySpacerParagraphsAreDropped() throws IOException {
+        // типичные confluence-распорки между абзацами не должны давать «лишних строк»
+        String out = convert("<p>один</p><p>&nbsp;</p><p></p><p> </p><p><br/></p><div></div><p>два</p>");
+        assertEquals(
+                "= Документ\n"
+                + ":toc: macro\n"
+                + ":imagesdir: ./attache\n"
+                + "\n"
+                + "один\n"
+                + "\n"
+                + "два\n",
+                out);
+    }
+
+    @Test
     public void tableHasExactCompactLayout() throws IOException {
         String out = convert(
                 "<table><thead><tr><th>H1</th><th>H2</th></tr></thead>"

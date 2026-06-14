@@ -48,10 +48,27 @@ public final class BugReportService {
      */
     @Nullable
     public Path captureExport(String url, @Nullable Path exportRoot, Throwable error) {
+        return exportReport(url, exportRoot, error, false);
+    }
+
+    /**
+     * Принудительный отчёт об экспорте по запросу пользователя (галочка «Сформировать отчёт об ошибке»),
+     * когда исключения не было, но результат неверный. Стек пустой, в контексте — пометка о ручном запуске.
+     */
+    @Nullable
+    public Path captureExportManual(String url, @Nullable Path exportRoot) {
+        return exportReport(url, exportRoot, null, true);
+    }
+
+    @Nullable
+    private Path exportReport(String url, @Nullable Path exportRoot, Throwable error, boolean manual) {
         Map<String, String> context = new LinkedHashMap<>();
         context.put("url", maskUrl(url));
         context.put("export-root", exportRoot == null ? "(not created)" : exportRoot.getFileName().toString());
-        return capture("export", context, error, exportRoot, payload -> {
+        if (manual) {
+            context.put("trigger", "manual (user-requested, no exception)");
+        }
+        return capture(manual ? "export (manual)" : "export", context, error, exportRoot, payload -> {
             if (exportRoot != null && Files.isDirectory(exportRoot)) {
                 new ExportAnonymizer().anonymizeInto(exportRoot, payload);
             }
@@ -66,10 +83,24 @@ public final class BugReportService {
      */
     @Nullable
     public Path captureImport(String url, Path source, Throwable error) {
+        return importReport(url, source, error, false);
+    }
+
+    /** Принудительный отчёт об импорте по запросу пользователя (см. {@link #captureExportManual}). */
+    @Nullable
+    public Path captureImportManual(String url, Path source) {
+        return importReport(url, source, null, true);
+    }
+
+    @Nullable
+    private Path importReport(String url, Path source, Throwable error, boolean manual) {
         Map<String, String> context = new LinkedHashMap<>();
         context.put("url", maskUrl(url));
         context.put("source", source == null ? "(none)" : source.getFileName().toString());
-        return capture("import", context, error, source, payload -> {
+        if (manual) {
+            context.put("trigger", "manual (user-requested, no exception)");
+        }
+        return capture(manual ? "import (manual)" : "import", context, error, source, payload -> {
             if (source != null && Files.exists(source)) {
                 new ImportAnonymizer().anonymizeInto(source, payload);
             }

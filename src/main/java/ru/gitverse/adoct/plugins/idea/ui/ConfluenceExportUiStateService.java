@@ -38,6 +38,10 @@ public final class ConfluenceExportUiStateService implements PersistentStateComp
         state.exportColors = exportColors;
     }
 
+    public void setReportOnError(boolean reportOnError) {
+        state.reportOnError = reportOnError;
+    }
+
     public String getLastUrl() {
         return state.lastUrl == null ? "" : state.lastUrl;
     }
@@ -50,9 +54,14 @@ public final class ConfluenceExportUiStateService implements PersistentStateComp
         return state.exportColors;
     }
 
+    public boolean isReportOnError() {
+        return state.reportOnError;
+    }
+
     public static final class StateData {
         public String lastUrl = "";
         public String lastDirectory = "";
         public boolean exportColors = false;
+        public boolean reportOnError = false;
     }
 }

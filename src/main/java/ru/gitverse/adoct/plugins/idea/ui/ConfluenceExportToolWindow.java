@@ -13,6 +13,7 @@ import com.intellij.openapi.ui.TextFieldWithBrowseButton;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.components.JBTextField;
 import org.jetbrains.annotations.NotNull;
+import ru.gitverse.adoct.plugins.idea.service.BugReportService;
 import ru.gitverse.adoct.plugins.idea.service.ConvertDocsUrlToAdoc;
 
 import javax.swing.*;
@@ -34,6 +35,7 @@ public class ConfluenceExportToolWindow {
     private JBTextField confluenceUrlField;
     private TextFieldWithBrowseButton exportDirectoryField;
     private JCheckBox exportColorsCheckBox;
+    private JCheckBox reportOnErrorCheckBox;
     private JButton exportButton;
 
     public ConfluenceExportToolWindow(@NotNull Project project) {
@@ -79,16 +81,23 @@ public class ConfluenceExportToolWindow {
         gbc.weightx = 1.0;
         contentPanel.add(exportColorsCheckBox, gbc);
 
-        exportButton = new JButton(message("toolwindow.ConfluenceExport.Export.caption"));
+        reportOnErrorCheckBox = new JCheckBox(message("toolwindow.ConfluenceExport.ReportOnError.caption"));
         gbc.gridx = 0;
         gbc.gridy = 3;
+        gbc.gridwidth = 2;
+        gbc.weightx = 1.0;
+        contentPanel.add(reportOnErrorCheckBox, gbc);
+
+        exportButton = new JButton(message("toolwindow.ConfluenceExport.Export.caption"));
+        gbc.gridx = 0;
+        gbc.gridy = 4;
         gbc.gridwidth = 2;
         gbc.fill = GridBagConstraints.NONE;
         gbc.anchor = GridBagConstraints.CENTER;
         contentPanel.add(exportButton, gbc);
 
         gbc.gridx = 0;
-        gbc.gridy = 4;
+        gbc.gridy = 5;
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.anchor = GridBagConstraints.WEST;
@@ -116,6 +125,7 @@ public class ConfluenceExportToolWindow {
         confluenceUrlField.getDocument().addDocumentListener(stateListener);
         exportDirectoryField.getTextField().getDocument().addDocumentListener(stateListener);
         exportColorsCheckBox.addActionListener(e -> persistState());
+        reportOnErrorCheckBox.addActionListener(e -> persistState());
 
         exportDirectoryField.addActionListener(e -> {
             FileChooserDescriptor descriptor = FileChooserDescriptorFactory.createSingleFolderDescriptor();
@@ -133,6 +143,7 @@ public class ConfluenceExportToolWindow {
         String url = confluenceUrlField.getText().trim();
         String targetDirPath = exportDirectoryField.getText().trim();
         boolean exportColors = exportColorsCheckBox.isSelected();
+        boolean reportOnError = reportOnErrorCheckBox.isSelected();
         persistState(url, targetDirPath);
 
         if (url.isEmpty()) {
@@ -154,7 +165,7 @@ public class ConfluenceExportToolWindow {
             return;
         }
 
-        runExportInBackground(url, targetDir, exportColors);
+        runExportInBackground(url, targetDir, exportColors, reportOnError);
 
     }
 
@@ -191,6 +202,7 @@ public class ConfluenceExportToolWindow {
         }
 
         exportColorsCheckBox.setSelected(uiStateService.isExportColors());
+        reportOnErrorCheckBox.setSelected(uiStateService.isReportOnError());
     }
 
     private void persistState() {
@@ -205,12 +217,14 @@ public class ConfluenceExportToolWindow {
         uiStateService.setLastUrl(url == null ? "" : url.trim());
         uiStateService.setLastDirectory(directory == null ? "" : directory.trim());
         uiStateService.setExportColors(exportColors);
+        uiStateService.setReportOnError(reportOnErrorCheckBox.isSelected());
     }
 
-    private void runExportInBackground(String url, Path targetDir, boolean exportColors) {
+    private void runExportInBackground(String url, Path targetDir, boolean exportColors, boolean reportOnError) {
         exportButton.setEnabled(false);
         AtomicReference<Throwable> errorRef = new AtomicReference<>();
         AtomicReference<String> titleRef = new AtomicReference<>();
+        AtomicReference<Path> reportRef = new AtomicReference<>();
 
         ProgressManager.getInstance().run(new Task.Backgroundable(
                 project,
@@ -223,6 +237,11 @@ public class ConfluenceExportToolWindow {
                     indicator.setText(message("toolwindow.ConfluenceExport.Progress.running.text"));
                     String title = ConvertDocsUrlToAdoc.getInstance().convert(url, targetDir, exportColors, indicator);
                     titleRef.set(title);
+                    // Принудительный отчёт по запросу пользователя (тихая ошибка без исключения).
+                    if (reportOnError) {
+                        reportRef.set(BugReportService.getInstance()
+                                .captureExportManual(url, targetDir.resolve(title)));
+                    }
                 } catch (Throwable ex) {
                     errorRef.set(ex);
                 }
@@ -237,15 +256,18 @@ public class ConfluenceExportToolWindow {
                     return;
                 }
 
-                notifyInfo(
-                        String.format(
-                                "Export successful.\nURL: %s\nDirectory: %s\nColor export: %s\nTitle: %s",
-                                url,
-                                targetDir,
-                                exportColors ? "enabled" : "disabled",
-                                titleRef.get()
-                        )
+                String message = String.format(
+                        "Export successful.\nURL: %s\nDirectory: %s\nColor export: %s\nTitle: %s",
+                        url,
+                        targetDir,
+                        exportColors ? "enabled" : "disabled",
+                        titleRef.get()
                 );
+                Path report = reportRef.get();
+                if (report != null) {
+                    message = message + "\nError report: " + report;
+                }
+                notifyInfo(message);
             }
 
             @Override

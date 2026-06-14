@@ -73,6 +73,7 @@ public final class InlineBuilder {
             }
             case "i", "em" -> out.add(new Inline.Italic(children(node, ctx)));
             case "u" -> out.add(new Inline.Underline(children(node, ctx)));
+            case "code", "tt" -> out.add(new Inline.Mono(children(node, ctx)));
             case "strong", "b" -> out.add(new Inline.Bold(children(node, ctx)));
             case "a" -> out.add(new Inline.Link(node.attr("href"), children(node, ctx)));
             case "br" -> out.add(new Inline.LineBreak());
@@ -124,20 +125,68 @@ public final class InlineBuilder {
 
     // --- обрезка пробелов по краям инлайна --------------------------------
 
+    /**
+     * Убирает по краям инлайна пробелы (включая {@code &nbsp;} и zero-width) и переводы строк.
+     * Благодаря этому абзацы-распорки ({@code <p>&nbsp;</p>}, {@code <p><br/></p>}) схлопываются в
+     * пустой инлайн и затем отбрасываются как блок — без «лишних строк» в выводе. Защищает и от
+     * literal-абзацев (ведущие пробелы трактуются AsciiDoc как литеральный блок).
+     */
     private static List<Inline> trimEdges(List<Inline> nodes) {
-        if (nodes.isEmpty()) {
-            return nodes;
+        // С ведущего края: убираем переводы строк и обрезаем пробелы у крайнего Text;
+        // если он стал пустым — удаляем и продолжаем со следующего (каскад).
+        while (!nodes.isEmpty()) {
+            if (nodes.getFirst() instanceof Inline.LineBreak) {
+                nodes.removeFirst();
+            } else if (nodes.getFirst() instanceof Inline.Text t) {
+                String s = stripStart(t.value());
+                if (s.isEmpty()) {
+                    nodes.removeFirst();
+                } else {
+                    nodes.set(0, new Inline.Text(s));
+                    break;
+                }
+            } else {
+                break;
+            }
         }
-        if (nodes.getFirst() instanceof Inline.Text t) {
-            String s = StringUtils.stripStart(t.value(), null);
-            nodes.set(0, new Inline.Text(s));
+        // С замыкающего края — симметрично.
+        while (!nodes.isEmpty()) {
+            int last = nodes.size() - 1;
+            if (nodes.get(last) instanceof Inline.LineBreak) {
+                nodes.removeLast();
+            } else if (nodes.get(last) instanceof Inline.Text t) {
+                String s = stripEnd(t.value());
+                if (s.isEmpty()) {
+                    nodes.removeLast();
+                } else {
+                    nodes.set(last, new Inline.Text(s));
+                    break;
+                }
+            } else {
+                break;
+            }
         }
-        int last = nodes.size() - 1;
-        if (nodes.get(last) instanceof Inline.Text t) {
-            String s = StringUtils.stripEnd(t.value(), null);
-            nodes.set(last, new Inline.Text(s));
-        }
-        nodes.removeIf(n -> n instanceof Inline.Text t && t.value().isEmpty());
         return nodes;
+    }
+
+    private static String stripStart(String s) {
+        int i = 0;
+        while (i < s.length() && isTrimmable(s.charAt(i))) {
+            i++;
+        }
+        return s.substring(i);
+    }
+
+    private static String stripEnd(String s) {
+        int i = s.length();
+        while (i > 0 && isTrimmable(s.charAt(i - 1))) {
+            i--;
+        }
+        return s.substring(0, i);
+    }
+
+    /** Пробел для обрезки краёв: обычный whitespace + неразрывный ({@code &nbsp;}, 0x00A0) и zero-width. */
+    private static boolean isTrimmable(char c) {
+        return Character.isWhitespace(c) || c == 0x00A0 || c == 0x200B || c == 0xFEFF;
     }
 }

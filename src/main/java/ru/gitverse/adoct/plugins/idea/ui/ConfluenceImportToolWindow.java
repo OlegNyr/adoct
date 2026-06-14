@@ -12,10 +12,12 @@ import com.intellij.openapi.ui.TextFieldWithBrowseButton;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.components.JBTextField;
 import org.jetbrains.annotations.NotNull;
+import ru.gitverse.adoct.plugins.idea.service.BugReportService;
 import ru.gitverse.adoct.plugins.idea.service.PublishDocsToConfluence;
 
 import javax.swing.Box;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.event.DocumentEvent;
@@ -39,6 +41,7 @@ public class ConfluenceImportToolWindow {
     private JPanel contentPanel;
     private JBTextField confluenceUrlField;
     private TextFieldWithBrowseButton sourceField;
+    private JCheckBox reportOnErrorCheckBox;
     private JButton importButton;
 
     public ConfluenceImportToolWindow(@NotNull Project project) {
@@ -77,16 +80,23 @@ public class ConfluenceImportToolWindow {
         gbc.weightx = 1.0;
         contentPanel.add(sourceField, gbc);
 
-        importButton = new JButton(message("toolwindow.ConfluenceImport.Import.caption"));
+        reportOnErrorCheckBox = new JCheckBox(message("toolwindow.ConfluenceImport.ReportOnError.caption"));
         gbc.gridx = 0;
         gbc.gridy = 2;
+        gbc.gridwidth = 2;
+        gbc.weightx = 1.0;
+        contentPanel.add(reportOnErrorCheckBox, gbc);
+
+        importButton = new JButton(message("toolwindow.ConfluenceImport.Import.caption"));
+        gbc.gridx = 0;
+        gbc.gridy = 3;
         gbc.gridwidth = 2;
         gbc.fill = GridBagConstraints.NONE;
         gbc.anchor = GridBagConstraints.CENTER;
         contentPanel.add(importButton, gbc);
 
         gbc.gridx = 0;
-        gbc.gridy = 3;
+        gbc.gridy = 4;
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.anchor = GridBagConstraints.WEST;
@@ -113,6 +123,7 @@ public class ConfluenceImportToolWindow {
 
         confluenceUrlField.getDocument().addDocumentListener(stateListener);
         sourceField.getTextField().getDocument().addDocumentListener(stateListener);
+        reportOnErrorCheckBox.addActionListener(e -> persistState());
 
         sourceField.addActionListener(e -> {
             // Источник — одиночный .adoc или папка с .adoc.
@@ -151,7 +162,7 @@ public class ConfluenceImportToolWindow {
             return;
         }
 
-        runImportInBackground(url, source);
+        runImportInBackground(url, source, reportOnErrorCheckBox.isSelected());
     }
 
     private static boolean isValidHttpUrl(String value) {
@@ -184,6 +195,7 @@ public class ConfluenceImportToolWindow {
                 uiStateService.setLastSource(basePath);
             }
         }
+        reportOnErrorCheckBox.setSelected(uiStateService.isReportOnError());
     }
 
     private void persistState() {
@@ -193,12 +205,14 @@ public class ConfluenceImportToolWindow {
     private void persistState(String url, String source) {
         uiStateService.setLastUrl(url == null ? "" : url.trim());
         uiStateService.setLastSource(source == null ? "" : source.trim());
+        uiStateService.setReportOnError(reportOnErrorCheckBox.isSelected());
     }
 
-    private void runImportInBackground(String url, Path source) {
+    private void runImportInBackground(String url, Path source, boolean reportOnError) {
         importButton.setEnabled(false);
         AtomicReference<Throwable> errorRef = new AtomicReference<>();
         AtomicReference<String> summaryRef = new AtomicReference<>();
+        AtomicReference<Path> reportRef = new AtomicReference<>();
 
         ProgressManager.getInstance().run(new Task.Backgroundable(
                 project,
@@ -210,6 +224,10 @@ public class ConfluenceImportToolWindow {
                 try {
                     indicator.setText(message("toolwindow.ConfluenceImport.Progress.running.text"));
                     summaryRef.set(PublishDocsToConfluence.getInstance().publish(url, source, indicator));
+                    // Принудительный отчёт по запросу пользователя (тихая ошибка без исключения).
+                    if (reportOnError) {
+                        reportRef.set(BugReportService.getInstance().captureImportManual(url, source));
+                    }
                 } catch (Throwable ex) {
                     errorRef.set(ex);
                 }
@@ -223,8 +241,13 @@ public class ConfluenceImportToolWindow {
                     notifyError(String.format("Error importing to Confluence: %s", error.getMessage()));
                     return;
                 }
-                notifyInfo(String.format("Import successful.%nURL: %s%nSource: %s%n%s",
-                        url, source, summaryRef.get()));
+                String message = String.format("Import successful.%nURL: %s%nSource: %s%n%s",
+                        url, source, summaryRef.get());
+                Path report = reportRef.get();
+                if (report != null) {
+                    message = message + System.lineSeparator() + "Error report: " + report;
+                }
+                notifyInfo(message);
             }
 
             @Override

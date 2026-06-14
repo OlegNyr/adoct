@@ -27,6 +27,10 @@ public sealed interface Inline {
     record Underline(List<Inline> children) implements Inline {
     }
 
+    /** Моноширинный (inline-код): {@code `…`}. */
+    record Mono(List<Inline> children) implements Inline {
+    }
+
     /** Цвет: {@code [.<color>]##…##} (экспортируется только при включённом color-режиме). */
     record Colored(String color, List<Inline> children) implements Inline {
     }

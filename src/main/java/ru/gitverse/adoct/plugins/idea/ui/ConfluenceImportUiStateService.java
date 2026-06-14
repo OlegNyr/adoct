@@ -35,6 +35,10 @@ public final class ConfluenceImportUiStateService
         state.lastSource = lastSource;
     }
 
+    public void setReportOnError(boolean reportOnError) {
+        state.reportOnError = reportOnError;
+    }
+
     public String getLastUrl() {
         return state.lastUrl == null ? "" : state.lastUrl;
     }
@@ -43,8 +47,13 @@ public final class ConfluenceImportUiStateService
         return state.lastSource == null ? "" : state.lastSource;
     }
 
+    public boolean isReportOnError() {
+        return state.reportOnError;
+    }
+
     public static final class StateData {
         public String lastUrl = "";
         public String lastSource = "";
+        public boolean reportOnError = false;
     }
 }
