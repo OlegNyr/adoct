@@ -91,7 +91,14 @@ intellijPlatform {
 
         ideaVersion {
             sinceBuild = property("pluginSinceBuild")
-            untilBuild = property("pluginUntilBuild")
+            // Пустой pluginUntilBuild => без верхней границы (provider { null }), иначе значение из gradle.properties.
+            // Пустую строку Plugin Verifier не принимает, поэтому именно null. См. GITVERSE_PUBLISHING.md §5.
+            val untilBuildProp = property("pluginUntilBuild").orNull?.trim().orEmpty()
+            if (untilBuildProp.isEmpty()) {
+                untilBuild = provider { null }
+            } else {
+                untilBuild = provider { untilBuildProp }
+            }
         }
     }
 

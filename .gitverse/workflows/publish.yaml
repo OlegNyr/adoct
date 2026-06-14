@@ -1,0 +1,101 @@
+name: publish-plugin
+
+# Релиз = bump pluginVersion -> тег vX.Y.Z -> push. Дальше всё делает CI:
+#   1) собирает плагин (-Drelease=true, чтобы версия в манифесте была без -SNAPSHOT);
+#   2) публикует .zip в GitVerse Releases (для скачивания людьми);
+#   3) кладёт .zip + updatePlugins.xml на GitVerse Pages (на них смотрит IDE — публичная статика, без токена).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch: {}        # ручной перезапуск / откат на нужный тег
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # [ПРОВЕРИТЬ] доступность зеркала setup-java на раннере GitVerse.
+      # Раннер — Docker на ubuntu-latest; стандартные GitHub-actions поддерживаются (actions/checkout@v4 проверен).
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Resolve plugin metadata
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PROP_VERSION="$(grep -E '^pluginVersion' gradle.properties | head -n1 | cut -d= -f2 | xargs)"
+          # На пуш тега версия тега обязана совпадать с pluginVersion (иначе updatePlugins.xml разойдётся с манифестом).
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$VERSION" != "$PROP_VERSION" ]; then
+            echo "::error::Тег $GITHUB_REF_NAME (=$VERSION) не совпадает с pluginVersion=$PROP_VERSION в gradle.properties"
+            exit 1
+          fi
+          [ -z "$VERSION" ] && VERSION="$PROP_VERSION"   # для ручного workflow_dispatch без тега
+          {
+            echo "VERSION=$VERSION"
+            echo "PLUGIN_ID=$(grep -oP '(?<=<id>).*?(?=</id>)' src/main/resources/META-INF/plugin.xml)"
+            echo "SINCE_BUILD=$(grep -E '^pluginSinceBuild' gradle.properties | cut -d= -f2 | xargs)"
+            echo "UNTIL_BUILD=$(grep -E '^pluginUntilBuild' gradle.properties | cut -d= -f2 | xargs)"
+            echo "PAGES_BASE=https://andrbars.gitverse.site/adoct"
+          } >> "$GITHUB_ENV"
+
+      - name: Build plugin
+        run: ./gradlew buildPlugin -Drelease=true --no-daemon
+
+      - name: Locate distribution
+        run: |
+          ZIP="$(ls build/distributions/*.zip | head -n1)"
+          echo "ZIP_PATH=$ZIP" >> "$GITHUB_ENV"
+          echo "ZIP_NAME=$(basename "$ZIP")" >> "$GITHUB_ENV"
+
+      # Releases — для скачивания людьми. Старые ассеты не удаляем (источник для отката).
+      - name: Create release & upload zip
+        if: github.event_name == 'push'
+        uses: actions/create-release@v1
+        with:
+          api_key: ${{ secrets.GITVERSE_API_KEY }}
+          title: AsciiDocTools ${{ env.VERSION }}
+          body: |
+            Автоматическая сборка по тегу ${{ github.ref_name }}.
+
+            Установка в IDE: Settings -> Plugins -> (шестерёнка) -> Manage Plugin Repositories -> +
+            ${{ env.PAGES_BASE }}/updatePlugins.xml
+          files: |
+            ${{ env.ZIP_PATH }}
+          draft: false
+          pre_release: false
+
+      # Pages-пэйлоад: index.html (обязателен для артефакта Pages) + .nojekyll + updatePlugins.xml + сам .zip.
+      # updatePlugins.xml указывает на ${PAGES_BASE}/${ZIP_NAME} — публичный статический URL на Pages.
+      - name: Assemble Pages payload
+        run: |
+          rm -rf public && mkdir -p public
+          cp pages/index.html public/index.html
+          cp pages/.nojekyll  public/.nojekyll
+          cp "$ZIP_PATH"      "public/$ZIP_NAME"
+          export ASSET_URL="${PAGES_BASE}/${ZIP_NAME}"
+          ( cd public && bash "$GITHUB_WORKSPACE/scripts/gen-update-plugins.sh" )
+          echo "Содержимое public/:" && ls -la public
+
+      - name: Upload Pages artifact
+        uses: gitverse/upload-pages-artifact@v1.0.0
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # [ПРОВЕРИТЬ] имя environment для Pages у GitVerse (по аналогии с GitHub Pages).
+    environment:
+      name: gitverse-pages
+    steps:
+      - name: Deploy to GitVerse Pages
+        uses: gitverse/deploy-pages@v1.0.0
