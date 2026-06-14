@@ -7,9 +7,9 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 import ru.gitverse.adoct.plugins.idea.settings.ConfluenceSettingsService;
-import ru.gitverse.adoct.DispatcherPage;
-import ru.gitverse.adoct.client.ConfluenceClient;
-import ru.gitverse.adoct.client.ObjectMapperExt;
+import ru.gitverse.adoct.parser.DispatcherPage;
+import ru.gitverse.adoct.parser.confluence.ConfluenceClient;
+import ru.gitverse.adoct.parser.confluence.ObjectMapperExt;
 
 import java.nio.file.Path;
 import java.util.regex.Matcher;

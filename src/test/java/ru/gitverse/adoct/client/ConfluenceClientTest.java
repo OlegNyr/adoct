@@ -1,4 +1,4 @@
-package ru.gitverse.adoct.client;
+package ru.gitverse.adoct.parser.confluence;
 
 import lombok.SneakyThrows;
 import org.junit.Before;

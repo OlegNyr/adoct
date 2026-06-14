@@ -2,17 +2,14 @@ package ru.gitverse.adoct.parser.golden;
 
 import org.junit.After;
 import org.junit.Before;
-import ru.gitverse.adoct.ConvertStorageToAdoc;
-import ru.gitverse.adoct.MetadataKey;
-import ru.gitverse.adoct.post.DubleCaretPostProcesing;
-import ru.gitverse.adoct.post.TableCompactPostProcesing;
+import ru.gitverse.adoct.parser.ConvertStorageToAdoc;
+import ru.gitverse.adoct.parser.model.MetadataKey;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -65,7 +62,6 @@ public abstract class AbstractConvertParserTest {
         metadata.putAll(extra);
 
         ConvertStorageToAdoc converter = new ConvertStorageToAdoc(storageBody, null, tmp);
-        converter.setProcesings(List.of(new DubleCaretPostProcesing(), new TableCompactPostProcesing()));
         converter.convert(metadata, tmp);
 
         return Files.readString(tmp.resolve("index.adoc")).replace("\r\n", "\n");

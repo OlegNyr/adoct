@@ -4,7 +4,6 @@ import org.junit.Test;
 
 import java.io.IOException;
 
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /** Таблицы: cols, разделители, экранирование '|', и quirk с потерей первой строки. */
@@ -33,19 +32,51 @@ public class TableParserTest extends AbstractConvertParserTest {
     }
 
     /**
-     * Quirk (фиксируем как есть, не баг-фикс): таблица без {@code <thead>} и без ячеек {@code <th>}
-     * молча теряет ПЕРВУЮ строку {@code <tbody>}. В {@code ParseTable} флаг {@code ignoreFirst}
-     * выставляется при пустом {@code colsFromHead}, даже если {@code headFromBody} ничего не вернул,
-     * после чего строка с индексом 0 пропускается.
+     * Таблица без заголовка (только {@code <td>}) сохраняет ВСЕ строки тела.
+     * Раньше движок молча терял первую строку (баг {@code ignoreFirst}); новый разбор по «вся строка
+     * из {@code <th>} → заголовок» не выбрасывает строки.
      */
     @Test
-    public void tableWithoutHeadDropsFirstBodyRow() throws IOException {
+    public void tableWithoutHeadKeepsAllBodyRows() throws IOException {
         String out = convert(
                 "<table><tbody>"
                 + "<tr><td>первая</td></tr>"
                 + "<tr><td>вторая</td></tr>"
                 + "</tbody></table>");
-        assertFalse(out.contains("первая"));
+        assertTrue(out.contains("первая"));
         assertTrue(out.contains("вторая"));
+    }
+
+    /** Ширины колонок из {@code <colgroup>} → пропорциональный {@code [cols]} (с сохранением стиля {@code a}). */
+    @Test
+    public void colgroupWidthsBecomeProportionalCols() throws IOException {
+        String out = convert(
+                "<table><colgroup>"
+                + "<col style=\"width: 100.0px;\"/><col style=\"width: 300.0px;\"/></colgroup>"
+                + "<tbody><tr><th>H1</th><th>H2</th></tr>"
+                + "<tr><td>a</td><td>b</td></tr></tbody></table>");
+        assertTrue(out.contains("[cols=\"100a,300a\"]"));
+    }
+
+    /** Без полного {@code <colgroup>} — равные колонки {@code 1a}. */
+    @Test
+    public void missingColgroupFallsBackToEqualCols() throws IOException {
+        String out = convert(
+                "<table><tbody><tr><th>H1</th><th>H2</th></tr>"
+                + "<tr><td>a</td><td>b</td></tr></tbody></table>");
+        assertTrue(out.contains("[cols=\"1a,1a\"]"));
+    }
+
+    /** Заголовочная колонка: {@code <th>} в строке тела рендерится со стилем {@code h|}. */
+    @Test
+    public void headerColumnCellsUseHStyle() throws IOException {
+        String out = convert(
+                "<table><tbody>"
+                + "<tr><th>Имя</th><td>Иван</td></tr>"
+                + "<tr><th>Возраст</th><td>30</td></tr>"
+                + "</tbody></table>");
+        assertTrue(out.contains("h|Имя"));
+        assertTrue(out.contains("h|Возраст"));
+        assertTrue(out.contains("|Иван"));
     }
 }

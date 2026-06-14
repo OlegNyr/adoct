@@ -9,7 +9,7 @@ import com.intellij.ui.table.JBTable;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import ru.gitverse.adoct.client.ConfluenceClient;
+import ru.gitverse.adoct.parser.confluence.ConfluenceClient;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;

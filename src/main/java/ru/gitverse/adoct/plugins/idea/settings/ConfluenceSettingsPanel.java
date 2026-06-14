@@ -6,7 +6,7 @@ import com.intellij.ui.components.JBList;
 import com.intellij.ui.components.JBPanel;
 import com.intellij.ui.components.JBTextField;
 import org.jetbrains.annotations.NotNull;
-import ru.gitverse.adoct.client.ConfluenceClient;
+import ru.gitverse.adoct.parser.confluence.ConfluenceClient;
 
 import javax.swing.*;
 import javax.swing.event.ListSelectionEvent;

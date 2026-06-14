@@ -1,10 +1,10 @@
 package ru.gitverse.adoct.parser.golden;
 
 import org.junit.Test;
-import ru.gitverse.adoct.LinksPage;
-import ru.gitverse.adoct.LinksValue;
-import ru.gitverse.adoct.MetadataKey;
-import ru.gitverse.adoct.client.LinkResult;
+import ru.gitverse.adoct.parser.model.LinksPage;
+import ru.gitverse.adoct.parser.model.LinksValue;
+import ru.gitverse.adoct.parser.model.MetadataKey;
+import ru.gitverse.adoct.parser.confluence.LinkResult;
 
 import java.io.IOException;
 import java.util.Map;
