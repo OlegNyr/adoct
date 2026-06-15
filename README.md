@@ -22,7 +22,7 @@
 1. **Settings → Plugins → ⚙ → Manage Plugin Repositories → +**
 2. Добавьте URL:
    ```
-   https://andrbars.gitverse.site/adoct/updatePlugins.xml
+   https://olegnyr.gitverse.site/adoct/updatePlugins.xml
    ```
 3. Установите **AsciiDocTools** на вкладке Marketplace. Обновления приходят автоматически
    (плановый опрос или **Check for updates**).
