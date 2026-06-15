@@ -61,6 +61,9 @@ jobs:
       # Используем встроенный репозиторный токен CI (github.token), а не аккаунтовый PAT.
       - name: Create release & upload zip
         if: github.event_name == 'push'
+        # Не критично: Releases — для людей, а IDE берёт zip с Pages. Если шаг упадёт
+        # (например, токену не хватит прав на релиз) — пайплайн всё равно публикует Pages.
+        continue-on-error: true
         uses: actions/create-release@v1
         with:
           api_key: ${{ github.token }}
