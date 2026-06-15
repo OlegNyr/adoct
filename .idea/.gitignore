@@ -1,4 +1,6 @@
 # Default ignored files
+.name
+go.imports.xml
 /shelf/
 /workspace.xml
 # Environment-dependent path to Maven home directory

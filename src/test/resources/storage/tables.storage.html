@@ -1,0 +1,44 @@
+<h2>Таблицы</h2>
+<table class="wrapped">
+  <colgroup>
+    <col style="width: 120.0px;"/>
+    <col style="width: 360.0px;"/>
+  </colgroup>
+  <tbody>
+    <tr>
+      <th class="confluenceTh">Параметр</th>
+      <th class="confluenceTh">Описание</th>
+    </tr>
+    <tr>
+      <td class="confluenceTd">timeout</td>
+      <td class="confluenceTd">таймаут в секундах</td>
+    </tr>
+    <tr>
+      <td class="confluenceTd">retries</td>
+      <td class="confluenceTd">число повторов</td>
+    </tr>
+  </tbody>
+</table>
+<p>Таблица с заголовочной колонкой и объединениями:</p>
+<table>
+  <tbody>
+    <tr><th>Имя</th><td>Иван</td><td>Пётр</td></tr>
+    <tr><th>Роль</th><td colspan="2">админ</td></tr>
+    <tr><th rowspan="2">Статус</th><td>активен</td><td>активен</td></tr>
+    <tr><td>заблокирован</td><td>активен</td></tr>
+  </tbody>
+</table>
+<p>Таблица с вложенной таблицей в ячейке:</p>
+<table>
+  <tbody>
+    <tr><th>Внешняя</th></tr>
+    <tr><td>
+      <table>
+        <tbody>
+          <tr><th>Внутр1</th><th>Внутр2</th></tr>
+          <tr><td>a</td><td>b</td></tr>
+        </tbody>
+      </table>
+    </td></tr>
+  </tbody>
+</table>

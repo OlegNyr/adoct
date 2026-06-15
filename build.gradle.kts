@@ -35,8 +35,9 @@ dependencies {
     // PlantUML для локального рендеринга
 //    implementation("net.sourceforge.plantuml:plantuml:1.2023.9")
 
-    // AsciidoctorJ для генерации диаграмм
-//    implementation("org.asciidoctor:asciidoctorj:3.0.0")
+    // AsciidoctorJ — парсинг AsciiDoc в AST для генерации Confluence storage format
+    // (модуль ru.gitverse.adoct.generate). Тянет JRuby.
+    implementation(libs.asciidoctorj)
 
     implementation("ar.com.hjg:pngj:2.0.1")
 
@@ -90,6 +91,23 @@ intellijPlatform {
 
         ideaVersion {
             sinceBuild = property("pluginSinceBuild")
+            // Пустой pluginUntilBuild => без верхней границы (provider { null }), иначе значение из gradle.properties.
+            // Пустую строку Plugin Verifier не принимает, поэтому именно null. См. GITVERSE_PUBLISHING.md §5.
+            val untilBuildProp = property("pluginUntilBuild").orNull?.trim().orEmpty()
+            if (untilBuildProp.isEmpty()) {
+                untilBuild = provider { null }
+            } else {
+                untilBuild = provider { untilBuildProp }
+            }
+        }
+    }
+
+    // Plugin Verifier: те же проверки совместимости, что гоняет Marketplace.
+    // recommended() сам подбирает IDE по объявленному диапазону since/until-build (вкл. 2025.3).
+    // Запуск: ./gradlew verifyPlugin (скачивает целевые IDE при первом прогоне).
+    pluginVerification {
+        ides {
+            recommended()
         }
     }
 }

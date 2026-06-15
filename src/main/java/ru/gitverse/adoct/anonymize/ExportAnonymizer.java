@@ -34,6 +34,17 @@ public class ExportAnonymizer {
 
     @SneakyThrows
     public Result anonymize(Path root, Path outputDir, Path zipFile) {
+        Result result = anonymizeInto(root, outputDir);
+        zip(outputDir, zipFile);
+        return new Result(outputDir, zipFile, result.htmlFiles(), result.jsonFiles(), result.attachments());
+    }
+
+    /**
+     * Анонимизирует экспорт в {@code outputDir} без упаковки в архив (для приложения к баг-репорту,
+     * где архив собирается уровнем выше). Поле {@link Result#zipFile()} остаётся {@code null}.
+     */
+    @SneakyThrows
+    public Result anonymizeInto(Path root, Path outputDir) {
         Anonymizer anon = new Anonymizer();
         StorageHtmlAnonymizer html = new StorageHtmlAnonymizer(anon);
         JsonAnonymizer json = new JsonAnonymizer(anon, html);
@@ -72,8 +83,7 @@ public class ExportAnonymizer {
             attachCount = countFiles(outAttach);
         }
 
-        zip(outputDir, zipFile);
-        return new Result(outputDir, zipFile, htmlCount, jsonCount, attachCount);
+        return new Result(outputDir, null, htmlCount, jsonCount, attachCount);
     }
 
     private static Path locateHtmlDir(Path root) {
