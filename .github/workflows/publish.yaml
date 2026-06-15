@@ -83,6 +83,13 @@ jobs:
           mv updatePlugins.xml public/
           echo "public/:" && ls -la public
 
+      # Авто-инициализация Pages из workflow (enablement: true) — чтобы не зависеть от
+      # ручного тумблера Settings → Pages → Source и не падать на "Get Pages site failed".
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
