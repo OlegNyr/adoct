@@ -1,0 +1,100 @@
+name: publish-plugin
+
+# Релиз = bump pluginVersion -> тег vX.Y.Z -> push. CI:
+#   1) собирает плагин (-Drelease=true, версия в манифесте без -SNAPSHOT);
+#   2) создаёт GitHub Release с .zip (для людей);
+#   3) публикует .zip + updatePlugins.xml на GitHub Pages (на них смотрит IDE).
+# Pages-домен открыт из банковского контура (gitverse.site закрыт, GitHub — нет).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch: {}
+
+# Права для GITHUB_TOKEN: contents — создать релиз; pages/id-token — deploy на Pages.
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Resolve plugin metadata
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PROP_VERSION="$(grep -E '^pluginVersion' gradle.properties | head -n1 | cut -d= -f2 | xargs)"
+          # На пуш тега версия тега обязана совпадать с pluginVersion.
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$VERSION" != "$PROP_VERSION" ]; then
+            echo "::error::Тег $GITHUB_REF_NAME (=$VERSION) не совпадает с pluginVersion=$PROP_VERSION"
+            exit 1
+          fi
+          [ -z "$VERSION" ] && VERSION="$PROP_VERSION"
+          {
+            echo "VERSION=$VERSION"
+            echo "PLUGIN_ID=$(grep -oP '(?<=<id>).*?(?=</id>)' src/main/resources/META-INF/plugin.xml)"
+            echo "SINCE_BUILD=$(grep -E '^pluginSinceBuild' gradle.properties | cut -d= -f2 | xargs)"
+            echo "UNTIL_BUILD=$(grep -E '^pluginUntilBuild' gradle.properties | cut -d= -f2 | xargs)"
+            echo "PAGES_BASE=https://olegnyr.github.io/adoct"
+          } >> "$GITHUB_ENV"
+
+      - name: Build plugin
+        # sh gradlew — не зависит от флага исполняемости при checkout.
+        run: sh gradlew buildPlugin -Drelease=true --no-daemon --stacktrace
+
+      - name: Locate distribution
+        run: |
+          ZIP="$(ls build/distributions/*.zip | head -n1)"
+          echo "ZIP_PATH=$ZIP" >> "$GITHUB_ENV"
+          echo "ZIP_NAME=$(basename "$ZIP")" >> "$GITHUB_ENV"
+
+      # GitHub Release — для скачивания людьми. GITHUB_TOKEN берётся автоматически.
+      - name: Create release & upload zip
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: AsciiDocTools ${{ env.VERSION }}
+          body: |
+            Автоматическая сборка по тегу ${{ github.ref_name }}.
+
+            Установка в IDE: Settings -> Plugins -> (шестерёнка) -> Manage Plugin Repositories -> +
+            ${{ env.PAGES_BASE }}/updatePlugins.xml
+          files: ${{ env.ZIP_PATH }}
+
+      # Pages-пэйлоад: index.html + .nojekyll + updatePlugins.xml + сам .zip.
+      # updatePlugins.xml указывает на ${PAGES_BASE}/${ZIP_NAME} — публичный URL на Pages.
+      - name: Assemble Pages payload
+        run: |
+          rm -rf public && mkdir -p public
+          cp pages/index.html pages/.nojekyll public/
+          cp "$ZIP_PATH" "public/$ZIP_NAME"
+          export ASSET_URL="${PAGES_BASE}/${ZIP_NAME}"
+          bash scripts/gen-update-plugins.sh
+          mv updatePlugins.xml public/
+          echo "public/:" && ls -la public
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
