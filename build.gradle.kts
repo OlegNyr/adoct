@@ -60,6 +60,11 @@ dependencies {
 }
 
 intellijPlatform {
+    // Отключаем инструментирование байт-кода: у плагина нет .form-файлов, а тяжёлый
+    // ExternalDependencyInstrumentingArtifactTransform перелопачивает всю платформу (~1.3 ГБ)
+    // и вешает слабый CI-раннер. См. GITVERSE_PUBLISHING.md.
+    instrumentCode = false
+
     pluginConfiguration {
         version = project.version as String
 
@@ -113,9 +118,11 @@ intellijPlatform {
 }
 
 tasks {
-    // buildSearchableOptions поднимает headless-IDE и падает на CI-раннере без шрифтовых
-    // системных библиотек (libfreetype.so.6). Плагину индекс поиска по настройкам не нужен.
-    buildSearchableOptions {
-        enabled = false
-    }
+    // Полностью отключаем цепочку searchable-options. buildSearchableOptions поднимает
+    // headless-IDE (падает на CI без libfreetype.so.6 и жрёт память), а зависимые
+    // prepare/jarSearchableOptions без неё валятся на отсутствующем каталоге при clean.
+    // Плагину индекс поиска по настройкам не нужен.
+    buildSearchableOptions { enabled = false }
+    prepareJarSearchableOptions { enabled = false }
+    jarSearchableOptions { enabled = false }
 }
