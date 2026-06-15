@@ -44,7 +44,7 @@ jobs:
             echo "PLUGIN_ID=$(grep -oP '(?<=<id>).*?(?=</id>)' src/main/resources/META-INF/plugin.xml)"
             echo "SINCE_BUILD=$(grep -E '^pluginSinceBuild' gradle.properties | cut -d= -f2 | xargs)"
             echo "UNTIL_BUILD=$(grep -E '^pluginUntilBuild' gradle.properties | cut -d= -f2 | xargs)"
-            echo "PAGES_BASE=https://andrbars.gitverse.site/adoct"
+            echo "PAGES_BASE=https://olegnyr.gitverse.site/adoct"
           } >> "$GITHUB_ENV"
 
       - name: Build plugin
