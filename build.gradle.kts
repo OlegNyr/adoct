@@ -111,3 +111,11 @@ intellijPlatform {
         }
     }
 }
+
+tasks {
+    // buildSearchableOptions поднимает headless-IDE и падает на CI-раннере без шрифтовых
+    // системных библиотек (libfreetype.so.6). Плагину индекс поиска по настройкам не нужен.
+    buildSearchableOptions {
+        enabled = false
+    }
+}
