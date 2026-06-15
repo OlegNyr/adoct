@@ -49,7 +49,8 @@ jobs:
 
       - name: Build plugin
         # sh gradlew (а не ./gradlew) — не зависит от флага исполняемости при checkout.
-        run: sh gradlew buildPlugin -Drelease=true --no-daemon
+        # --info: видно загрузку дистрибутива IDE (~1.3 ГБ) на «Calculating task graph».
+        run: sh gradlew buildPlugin -Drelease=true --no-daemon --info --stacktrace
 
       - name: Locate distribution
         run: |
