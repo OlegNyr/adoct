@@ -58,12 +58,12 @@ jobs:
           echo "ZIP_NAME=$(basename "$ZIP")" >> "$GITHUB_ENV"
 
       # Releases — для скачивания людьми. Старые ассеты не удаляем (источник для отката).
-      # [ПРОВЕРИТЬ] точные имена входов actions/create-release@v1 по доке release-action.
+      # Используем встроенный репозиторный токен CI (github.token), а не аккаунтовый PAT.
       - name: Create release & upload zip
         if: github.event_name == 'push'
         uses: actions/create-release@v1
         with:
-          api_key: ${{ secrets.DEPLOY_API_KEY }}
+          api_key: ${{ github.token }}
           title: AsciiDocTools ${{ env.VERSION }}
           body: |
             Автоматическая сборка по тегу ${{ github.ref_name }}.
