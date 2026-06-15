@@ -48,7 +48,8 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build plugin
-        run: ./gradlew buildPlugin -Drelease=true --no-daemon
+        # sh gradlew (а не ./gradlew) — не зависит от флага исполняемости при checkout.
+        run: sh gradlew buildPlugin -Drelease=true --no-daemon
 
       - name: Locate distribution
         run: |
