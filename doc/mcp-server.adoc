@@ -128,7 +128,11 @@ JVM-запуск: `./gradlew :adoct-mcp-cli:installDist`, затем `build/inst
 Сборка: `./gradlew :adoct-mcp-cli:nativeCompile --no-configuration-cache`
 (флаг — из-за известного конфликта плагина GraalVM с Gradle configuration-cache). Требуется GraalVM
 (JDK 21) в `GRAALVM_HOME`, а на Windows — установленный **Windows SDK + MSVC** (сборка из
-«x64 Native Tools Command Prompt for VS 2022»). Результат — `build/native/nativeCompile/adoct-mcp`.
+«x64 Native Tools Command Prompt for VS 2022»). Результат — `build/native/nativeCompile/adoct-mcp`
+(~51 МБ, холодный старт ~30 мс).
+
+Чтобы native собирался, asciidoctorj/JRuby-стек исключён из `nativeImageClasspath` (его charset-провайдер
+`jcodings` иначе форсит build-time-инициализацию). В JVM-режиме CLI он остаётся — там доступны все 62 тула.
 
 == Сравнение с проектами на GitHub
 

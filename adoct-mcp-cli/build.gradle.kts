@@ -25,6 +25,16 @@ application {
     mainClass.set("ru.gitverse.adoct.mcp.cli.McpCli")
 }
 
+// В native-образ asciidoctorj/JRuby-стек не нужен (native-вход McpCliNative использует coreTools без
+// confluence_publish_adoc). Убираем его из classpath native-образа — иначе charset-провайдер jcodings
+// форсит build-time-инициализацию и ломает сборку. На JVM-classpath он остаётся (publish_adoc работает).
+configurations.named("nativeImageClasspath") {
+    exclude(group = "org.asciidoctor")
+    exclude(group = "org.jruby")
+    exclude(group = "org.jruby.joni")
+    exclude(group = "org.jruby.jcodings")
+}
+
 graalvmNative {
     // Используем GraalVM из GRAALVM_HOME/JAVA_HOME, без авто-подбора toolchain.
     toolchainDetection.set(false)
@@ -38,3 +48,4 @@ graalvmNative {
         }
     }
 }
+
