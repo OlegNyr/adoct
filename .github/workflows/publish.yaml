@@ -58,6 +58,13 @@ jobs:
           echo "ZIP_PATH=$ZIP" >> "$GITHUB_ENV"
           echo "ZIP_NAME=$(basename "$ZIP")" >> "$GITHUB_ENV"
 
+      # Скачиваемый артефакт сборки (для ручных запусков без релиза).
+      - name: Upload plugin zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_NAME }}
+          path: ${{ env.ZIP_PATH }}
+
       # GitHub Release — для скачивания людьми. GITHUB_TOKEN берётся автоматически.
       - name: Create release & upload zip
         if: github.event_name == 'push'
@@ -75,6 +82,7 @@ jobs:
       # Pages-пэйлоад: index.html + .nojekyll + updatePlugins.xml + сам .zip.
       # updatePlugins.xml указывает на ${PAGES_BASE}/${ZIP_NAME} — публичный URL на Pages.
       - name: Assemble Pages payload
+        if: github.event_name == 'push'
         run: |
           rm -rf public && mkdir -p public
           cp pages/index.html pages/.nojekyll public/
@@ -87,17 +95,21 @@ jobs:
       # Авто-инициализация Pages из workflow (enablement: true) — чтобы не зависеть от
       # ручного тумблера Settings → Pages → Source и не падать на "Get Pages site failed".
       - name: Configure Pages
+        if: github.event_name == 'push'
         uses: actions/configure-pages@v5
         with:
           enablement: true
 
       - name: Upload Pages artifact
+        if: github.event_name == 'push'
         uses: actions/upload-pages-artifact@v3
         with:
           path: public
 
   deploy:
     needs: build
+    # Pages-деплой только на релиз (пуш тега); ручной dispatch только собирает .zip-артефакт.
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
