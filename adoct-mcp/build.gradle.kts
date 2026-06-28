@@ -23,3 +23,10 @@ dependencies {
     testImplementation(libs.junit)
     testRuntimeOnly(libs.slf4jApi)
 }
+
+tasks.test {
+    // Пробрасываем -Dmcp.* в форк тестов (live-смоук McpLiveIT против локального стенда).
+    listOf("mcp.host", "mcp.token", "mcp.pageId").forEach { key ->
+        providers.systemProperty(key).orNull?.let { systemProperty(key, it) }
+    }
+}
