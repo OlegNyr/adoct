@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -68,6 +69,7 @@ public class DispatcherPageIntegrationTest {
     public void resolvesLinksAndWritesSources() throws IOException {
         FakeGateway gateway = new FakeGateway(page());
         DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+        dispatcher.setDebug(true); // source/ пишется только в debug
 
         String title = dispatcher.generate("123", (text, v) -> { });
 
@@ -84,7 +86,7 @@ public class DispatcherPageIntegrationTest {
         // Вложение: link на локальную папку attache
         assertTrue(index.contains("link:attache/doc.pdf[doc.pdf]"));
 
-        // Исходники и кэш сохранены
+        // Исходники и кэш сохранены (debug)
         assertTrue(Files.exists(dest.resolve("source").resolve("body.storage.html")));
         assertTrue(Files.exists(dest.resolve("source").resolve("content.json")));
         assertTrue(Files.exists(dest.resolve("source").resolve("links.json")));
@@ -93,14 +95,45 @@ public class DispatcherPageIntegrationTest {
     }
 
     @Test
+    public void nonDebugRunOmitsSourceAndEmptyFiles() throws IOException {
+        DispatcherPage dispatcher = new DispatcherPage(new FakeGateway(page()), tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("123", (text, v) -> { });
+
+        Path dest = tmp.resolve("Главная");
+        assertTrue(Files.exists(dest.resolve("index.adoc")));
+        // Без debug папки source/ нет, а пустая files/ удалена
+        assertFalse(Files.exists(dest.resolve("source")));
+        assertFalse(Files.exists(dest.resolve("files")));
+    }
+
+    @Test
+    public void exportsChildPagesIntoSubfolders() throws IOException {
+        TreeGateway gateway = new TreeGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("root", (text, v) -> { });
+
+        // Корень -> tmp/Корень/, дочерняя -> tmp/Корень/Ребёнок/, внук -> .../Ребёнок/Внук/
+        Path root = tmp.resolve("Корень");
+        Path child = root.resolve("Ребёнок");
+        Path grand = child.resolve("Внук");
+        assertTrue(Files.exists(root.resolve("index.adoc")));
+        assertTrue(Files.exists(child.resolve("index.adoc")));
+        assertTrue(Files.exists(grand.resolve("index.adoc")));
+    }
+
+    @Test
     public void secondRunUsesCachedLinks() throws IOException {
-        // Первый прогон создаёт links.json
-        new DispatcherPage(new FakeGateway(page()), tmp, ObjectMapperExt.INSTANT)
-                .generate("123", (text, v) -> { });
+        // Первый прогон создаёт links.json (нужен debug, иначе кэш не пишется)
+        DispatcherPage first = new DispatcherPage(new FakeGateway(page()), tmp, ObjectMapperExt.INSTANT);
+        first.setDebug(true);
+        first.generate("123", (text, v) -> { });
 
         // Второй прогон: поиск/пользователи бросают — успех возможен только за счёт кэша links.json
         FailingResolveGateway cached = new FailingResolveGateway(page());
         DispatcherPage dispatcher = new DispatcherPage(cached, tmp, ObjectMapperExt.INSTANT);
+        dispatcher.setDebug(true);
 
         String title = dispatcher.generate("123", (text, v) -> { });
 
@@ -124,6 +157,11 @@ public class DispatcherPageIntegrationTest {
         @Override
         public ContentPage getMainPage(String id) {
             return page;
+        }
+
+        @Override
+        public List<String> getChildPageIds(String id) {
+            return List.of();
         }
 
         @Override
@@ -161,6 +199,47 @@ public class DispatcherPageIntegrationTest {
         public LinkResult user(String userKey) {
             userCalls.incrementAndGet();
             throw new AssertionError("user() вызван, хотя ссылка должна быть в кэше: " + userKey);
+        }
+    }
+
+    /** Фейк с деревом из трёх страниц: root → child → grand. Ссылок/вложений нет. */
+    private static class TreeGateway implements ConfluenceGateway {
+        private final Map<String, ContentPage> pages = Map.of(
+                "root", simple("Корень"),
+                "child", simple("Ребёнок"),
+                "grand", simple("Внук"));
+        private final Map<String, List<String>> children = Map.of(
+                "root", List.of("child"),
+                "child", List.of("grand"),
+                "grand", List.of());
+
+        private static ContentPage simple(String title) {
+            return new ContentPage(title, "http://confluence/" + title, "2024-01-01T00:00:00.000+0000",
+                    "<p>" + title + "</p>", "<p>view</p>", Map.of());
+        }
+
+        @Override
+        public ContentPage getMainPage(String id) {
+            return pages.get(id);
+        }
+
+        @Override
+        public List<String> getChildPageIds(String id) {
+            return children.getOrDefault(id, List.of());
+        }
+
+        @Override
+        public List<LinkResult> search(String title, String key) {
+            return List.of();
+        }
+
+        @Override
+        public LinkResult user(String userKey) {
+            return null;
+        }
+
+        @Override
+        public void loadAttach(Collection<LinkResult> values, Path attachmentFolder, Consumer<String> progress) {
         }
     }
 }

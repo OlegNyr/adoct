@@ -19,6 +19,7 @@ import ru.gitverse.adoct.generate.model.RenderResult;
 import ru.gitverse.adoct.generate.render.StorageRenderer;
 
 import java.io.IOException;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,7 +45,8 @@ import java.util.stream.Stream;
  *
  * <p>Источник — одиночный {@code .adoc} ({@code publish}) или папка с {@code .adoc} ({@code publish-dir}).
  * Сервер (host + токен) резолвится через {@link ConfluenceSettingsService} по базовому URL — как в экспорте.
- * Номер страницы необязателен: для файла берётся из URL ({@code pageId=...}) или из {@code :confluency-id:}.
+ * Номер страницы необязателен: для файла берётся из URL ({@code pageId=...}), из «человеческого» URL
+ * {@code /display/SPACE/Title} (ID дорезолвится по REST) или из {@code :confluency-id:}.
  *
  * <p><b>Иерархия папок.</b> Каждая папка представлена своим {@code index.adoc} (если его нет — создаётся,
  * заголовок = имя папки). {@code index.adoc} папки — страница-узел: обычные файлы папки становятся её
@@ -65,6 +67,8 @@ public final class PublishDocsToConfluence {
     private static final String CONTENT_HASH_KEY = "content-hash";
     private static final String ATTACHMENT_HASH_SUFFIX = "-attachment-hash";
     private static final Pattern PAGE_ID = Pattern.compile("pageId=(\\d+)");
+    /** «Человеческий» URL без номера страницы: {@code /display/SPACE/Title}. */
+    private static final Pattern DISPLAY_URL = Pattern.compile("/display/([^/?#]+)/([^/?#]+)");
 
     /** Счётчики итога публикации папки. */
     private static final class Counts {
@@ -95,7 +99,7 @@ public final class PublishDocsToConfluence {
                             "Server not found in settings for URL: " + url
                                     + ". Add it in Settings | Tools | AsciiDocTools Confluence."));
             ConfluenceClient client = new ConfluenceClient(server.getHost(), server.getToken());
-            Optional<String> urlPageId = extractPageId(url);
+            Optional<String> urlPageId = resolvePageId(client, url);
 
             if (Files.isDirectory(source)) {
                 return publishDir(client, source, urlPageId, indicator);
@@ -123,7 +127,9 @@ public final class PublishDocsToConfluence {
                 indicator.setFraction(1.0);
                 return "Skipped " + file.getFileName() + " (:confluency-id: ignore)";
             }
-            String pageId = urlPageId.orElseGet(() -> attribute(doc, ID_ATTRIBUTE));
+            String pageId = urlPageId.isPresent()
+                    ? urlPageId.get()
+                    : resolveConfluencyId(client, file, attribute(doc, ID_ATTRIBUTE));
             if (pageId == null || pageId.isBlank()) {
                 throw new RuntimeException("No page id: provide a Confluence page URL with pageId, "
                         + "or add :confluency-id: to " + file.getFileName());
@@ -244,7 +250,7 @@ public final class PublishDocsToConfluence {
                 return parentPageId;
             }
             RenderResult result = render(indexFile, doc, index, space);
-            String existingId = attribute(doc, ID_ATTRIBUTE);
+            String existingId = resolveConfluencyId(client, indexFile, attribute(doc, ID_ATTRIBUTE));
             if (existingId != null && !existingId.isBlank()) {
                 boolean changed = updateBody(client, existingId, result.xhtml());
                 uploadAttachments(client, existingId, result.images());
@@ -277,7 +283,7 @@ public final class PublishDocsToConfluence {
                 return;
             }
             RenderResult result = render(file, doc, index, space);
-            String existingId = attribute(doc, ID_ATTRIBUTE);
+            String existingId = resolveConfluencyId(client, file, attribute(doc, ID_ATTRIBUTE));
             if (existingId != null && !existingId.isBlank()) {
                 boolean changed = updateBody(client, existingId, result.xhtml());
                 uploadAttachments(client, existingId, result.images());
@@ -412,6 +418,25 @@ public final class PublishDocsToConfluence {
         refreshVfs(file);
     }
 
+    /** Перезаписывает значение существующего {@code :confluency-id:} в файле (URL → числовой ID). */
+    private static void rewriteConfluencyId(Path file, String id) throws IOException {
+        String content = Files.readString(file, StandardCharsets.UTF_8);
+        Files.writeString(file, replaceConfluencyId(content, id), StandardCharsets.UTF_8);
+        refreshVfs(file);
+    }
+
+    /** Меняет значение первой строки {@code :confluency-id: ...} на {@code id}; если строки нет — вставляет. */
+    static String replaceConfluencyId(String content, String id) {
+        List<String> lines = new ArrayList<>(List.of(content.split("\n", -1)));
+        for (int i = 0; i < lines.size(); i++) {
+            if (lines.get(i).startsWith(":confluency-id:")) {
+                lines.set(i, ":confluency-id: " + id);
+                return String.join("\n", lines);
+            }
+        }
+        return insertConfluencyId(content, id);
+    }
+
     private static void refreshVfs(Path file) {
         VirtualFile vf = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(file);
         if (vf != null) {
@@ -434,10 +459,77 @@ public final class PublishDocsToConfluence {
         return String.join("\n", lines);
     }
 
+    /**
+     * Резолвит номер страницы из URL. Если в URL есть {@code pageId=...} — берём его; иначе пробуем
+     * «человеческий» URL {@code /display/SPACE/Title} и дорезолвим ID через REST по пространству и
+     * заголовку. Пусто, если ни то ни другое (тогда сработает {@code :confluency-id:} файла).
+     */
+    static Optional<String> resolvePageId(ConfluenceClient client, String url)
+            throws IOException, InterruptedException {
+        Optional<String> byId = extractPageId(url);
+        if (byId.isPresent()) {
+            return byId;
+        }
+        Optional<DisplayRef> ref = extractDisplayRef(url);
+        if (ref.isEmpty()) {
+            return Optional.empty();
+        }
+        String pageId = client.findPageId(ref.get().spaceKey(), ref.get().title());
+        return Optional.ofNullable(pageId);
+    }
+
+    /**
+     * Резолвит значение атрибута {@code :confluency-id:}. Чистое число — это уже ID (как раньше).
+     * Иначе значение трактуется как URL Confluence ({@code …?pageId=} или {@code /display/SPACE/Title})
+     * и дорезолвится в ID — чтобы в шапке {@code .adoc} можно было указывать «человеческую» ссылку.
+     * Зарезолвив URL, кэшируем результат: перезаписываем {@code :confluency-id:} в {@code file} числовым
+     * ID (если {@code file != null}), чтобы следующий прогон не ходил в REST. Пусто/{@code null} → {@code null}.
+     */
+    static String resolveConfluencyId(ConfluenceClient client, Path file, String value)
+            throws IOException, InterruptedException {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (isNumericId(trimmed)) {
+            return trimmed;
+        }
+        String resolved = resolvePageId(client, trimmed).orElse(null);
+        if (resolved != null && file != null) {
+            rewriteConfluencyId(file, resolved);
+        }
+        return resolved;
+    }
+
+    private static boolean isNumericId(String value) {
+        return !value.isEmpty() && value.chars().allMatch(Character::isDigit);
+    }
+
     /** Лояльная версия извлечения {@code pageId} из URL: пусто, если параметра нет. */
     static Optional<String> extractPageId(String url) {
         Matcher matcher = PAGE_ID.matcher(url);
         return matcher.find() ? Optional.of(matcher.group(1)) : Optional.empty();
+    }
+
+    /** Ключ пространства и заголовок страницы, разобранные из URL {@code /display/SPACE/Title}. */
+    record DisplayRef(String spaceKey, String title) {
+    }
+
+    /**
+     * Разбирает «человеческий» URL {@code /display/SPACE/Title}. Заголовок декодируется как в URL
+     * (пробелы — {@code +} или {@code %20}). Пусто, если URL не такого вида.
+     */
+    static Optional<DisplayRef> extractDisplayRef(String url) {
+        Matcher matcher = DISPLAY_URL.matcher(url);
+        if (!matcher.find()) {
+            return Optional.empty();
+        }
+        String space = URLDecoder.decode(matcher.group(1), StandardCharsets.UTF_8);
+        String title = URLDecoder.decode(matcher.group(2), StandardCharsets.UTF_8);
+        if (space.isBlank() || title.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(new DisplayRef(space, title));
     }
 
     private static String attribute(Document doc, String name) {

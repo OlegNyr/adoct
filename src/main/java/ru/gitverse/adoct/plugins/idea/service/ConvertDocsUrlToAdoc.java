@@ -12,6 +12,7 @@ import ru.gitverse.adoct.parser.confluence.ConfluenceClient;
 import ru.gitverse.adoct.parser.confluence.ObjectMapperExt;
 
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -24,7 +25,9 @@ public final class ConvertDocsUrlToAdoc {
         return ApplicationManager.getApplication().getService(ConvertDocsUrlToAdoc.class);
     }
 
-    public String convert(String url, Path targetDir, boolean exportColors, @NotNull ProgressIndicator indicator) {
+    public String convert(String url, Path targetDir, boolean exportColors, boolean debug,
+                          boolean includeChildren, boolean includeAttachments,
+                          @NotNull ProgressIndicator indicator) {
         indicator.checkCanceled();
         indicator.setIndeterminate(false);
         indicator.setFraction(0.1);
@@ -41,9 +44,12 @@ public final class ConvertDocsUrlToAdoc {
                 ObjectMapperExt.INSTANT
         );
         dispatcherPage.setExportColors(exportColors);
+        dispatcherPage.setDebug(debug);
+        dispatcherPage.setIncludeChildren(includeChildren);
+        dispatcherPage.setIncludeAttachments(includeAttachments);
 
         try {
-            String title = dispatcherPage.generate(extractPageId(url), (text, step) -> {
+            String title = dispatcherPage.generate(resolvePageId(confluenceClient, url), (text, step) -> {
                 if (text != null) {
                     indicator.setText2(text);
                 }
@@ -72,24 +78,31 @@ public final class ConvertDocsUrlToAdoc {
     }
 
     /**
-     * Извлекает идентификатор страницы из URL Confluence.
+     * Резолвит ID страницы из URL Confluence. Если есть {@code pageId=...} — берём его; иначе пробуем
+     * «человеческий» URL {@code /display/SPACE/Title} и дорезолвим ID через REST по пространству и заголовку.
      *
-     * @param url URL страницы Confluence в формате
-     *            https://confluence.example.com/pages/viewpage.action?pageId=21497584874
-     * @return идентификатор страницы как {@code long}
-     * @throws IllegalArgumentException если URL не содержит корректный pageId
+     * @throws IllegalArgumentException если ID не извлечь и страница по space+title не найдена
      */
-    public static String extractPageId(@NotNull String url) {
-        Pattern pattern = Pattern.compile("pageId=(\\d+)");
-        Matcher matcher = pattern.matcher(url);
-        if (matcher.find()) {
-            try {
-                return matcher.group(1);
-            } catch (NumberFormatException e) {
-                throw new IllegalArgumentException("Invalid page ID in URL: " + url, e);
-            }
+    public static String resolvePageId(@NotNull ConfluenceClient client, @NotNull String url) {
+        Optional<String> byId = extractPageId(url);
+        if (byId.isPresent()) {
+            return byId.get();
         }
-        throw new IllegalArgumentException("URL does not contain pageId parameter: " + url);
+        Optional<PublishDocsToConfluence.DisplayRef> ref = PublishDocsToConfluence.extractDisplayRef(url);
+        if (ref.isPresent()) {
+            return client.findPageId(ref.get().spaceKey(), ref.get().title())
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Page not found for space '" + ref.get().spaceKey()
+                                    + "' and title '" + ref.get().title() + "': " + url));
+        }
+        throw new IllegalArgumentException(
+                "URL has no pageId and is not a /display/SPACE/Title link: " + url);
+    }
+
+    /** Извлекает {@code pageId=...} из URL Confluence; пусто, если параметра нет. */
+    public static Optional<String> extractPageId(@NotNull String url) {
+        Matcher matcher = Pattern.compile("pageId=(\\d+)").matcher(url);
+        return matcher.find() ? Optional.of(matcher.group(1)) : Optional.empty();
     }
 
 }

@@ -16,6 +16,9 @@ public interface ConfluenceGateway {
     /** Загружает основную страницу со storage/view-телом и картой вложений. */
     ContentPage getMainPage(String id);
 
+    /** ID дочерних страниц (прямых потомков) данной страницы, в порядке Confluence. */
+    List<String> getChildPageIds(String id);
+
     /** Ищет страницу по заголовку (и опционально ключу пространства). */
     List<LinkResult> search(String title, String key);
 

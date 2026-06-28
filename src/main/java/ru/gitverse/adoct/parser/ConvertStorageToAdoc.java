@@ -130,8 +130,10 @@ public class ConvertStorageToAdoc {
         List<Block> blocks = astBuilder.build(bodyChildren, metadata, isColor);
         String body = new AsciiDocWriter().write(blocks);
 
-        String res = "= %s\n:toc: macro\n:imagesdir: ./%s\n\n%s\n".formatted(
-                metadata.get(MetadataKey.TITLE), metadata.get(MetadataKey.IMAGE), body);
+        Object pageId = metadata.get(MetadataKey.PAGE_ID);
+        String idLine = pageId == null ? "" : ":confluency-id: %s\n".formatted(pageId);
+        String res = "= %s\n%s:toc: macro\n:imagesdir: ./%s\n\n%s\n".formatted(
+                metadata.get(MetadataKey.TITLE), idLine, metadata.get(MetadataKey.IMAGE), body);
 
         if (printToStdout) {
             System.out.print(res);

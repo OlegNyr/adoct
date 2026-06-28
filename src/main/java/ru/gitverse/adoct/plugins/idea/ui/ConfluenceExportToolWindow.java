@@ -35,6 +35,9 @@ public class ConfluenceExportToolWindow {
     private JBTextField confluenceUrlField;
     private TextFieldWithBrowseButton exportDirectoryField;
     private JCheckBox exportColorsCheckBox;
+    private JCheckBox includeChildrenCheckBox;
+    private JCheckBox includeAttachmentsCheckBox;
+    private JCheckBox debugCheckBox;
     private JCheckBox reportOnErrorCheckBox;
     private JButton exportButton;
 
@@ -81,23 +84,44 @@ public class ConfluenceExportToolWindow {
         gbc.weightx = 1.0;
         contentPanel.add(exportColorsCheckBox, gbc);
 
-        reportOnErrorCheckBox = new JCheckBox(message("toolwindow.ConfluenceExport.ReportOnError.caption"));
+        includeChildrenCheckBox = new JCheckBox(message("toolwindow.ConfluenceExport.IncludeChildren.caption"));
         gbc.gridx = 0;
         gbc.gridy = 3;
+        gbc.gridwidth = 2;
+        gbc.weightx = 1.0;
+        contentPanel.add(includeChildrenCheckBox, gbc);
+
+        includeAttachmentsCheckBox = new JCheckBox(message("toolwindow.ConfluenceExport.IncludeAttachments.caption"));
+        gbc.gridx = 0;
+        gbc.gridy = 4;
+        gbc.gridwidth = 2;
+        gbc.weightx = 1.0;
+        contentPanel.add(includeAttachmentsCheckBox, gbc);
+
+        debugCheckBox = new JCheckBox(message("toolwindow.ConfluenceExport.Debug.caption"));
+        gbc.gridx = 0;
+        gbc.gridy = 5;
+        gbc.gridwidth = 2;
+        gbc.weightx = 1.0;
+        contentPanel.add(debugCheckBox, gbc);
+
+        reportOnErrorCheckBox = new JCheckBox(message("toolwindow.ConfluenceExport.ReportOnError.caption"));
+        gbc.gridx = 0;
+        gbc.gridy = 6;
         gbc.gridwidth = 2;
         gbc.weightx = 1.0;
         contentPanel.add(reportOnErrorCheckBox, gbc);
 
         exportButton = new JButton(message("toolwindow.ConfluenceExport.Export.caption"));
         gbc.gridx = 0;
-        gbc.gridy = 4;
+        gbc.gridy = 7;
         gbc.gridwidth = 2;
         gbc.fill = GridBagConstraints.NONE;
         gbc.anchor = GridBagConstraints.CENTER;
         contentPanel.add(exportButton, gbc);
 
         gbc.gridx = 0;
-        gbc.gridy = 5;
+        gbc.gridy = 8;
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.anchor = GridBagConstraints.WEST;
@@ -125,6 +149,9 @@ public class ConfluenceExportToolWindow {
         confluenceUrlField.getDocument().addDocumentListener(stateListener);
         exportDirectoryField.getTextField().getDocument().addDocumentListener(stateListener);
         exportColorsCheckBox.addActionListener(e -> persistState());
+        includeChildrenCheckBox.addActionListener(e -> persistState());
+        includeAttachmentsCheckBox.addActionListener(e -> persistState());
+        debugCheckBox.addActionListener(e -> persistState());
         reportOnErrorCheckBox.addActionListener(e -> persistState());
 
         exportDirectoryField.addActionListener(e -> {
@@ -143,6 +170,9 @@ public class ConfluenceExportToolWindow {
         String url = confluenceUrlField.getText().trim();
         String targetDirPath = exportDirectoryField.getText().trim();
         boolean exportColors = exportColorsCheckBox.isSelected();
+        boolean includeChildren = includeChildrenCheckBox.isSelected();
+        boolean includeAttachments = includeAttachmentsCheckBox.isSelected();
+        boolean debug = debugCheckBox.isSelected();
         boolean reportOnError = reportOnErrorCheckBox.isSelected();
         persistState(url, targetDirPath);
 
@@ -165,7 +195,7 @@ public class ConfluenceExportToolWindow {
             return;
         }
 
-        runExportInBackground(url, targetDir, exportColors, reportOnError);
+        runExportInBackground(url, targetDir, exportColors, includeChildren, includeAttachments, debug, reportOnError);
 
     }
 
@@ -202,6 +232,9 @@ public class ConfluenceExportToolWindow {
         }
 
         exportColorsCheckBox.setSelected(uiStateService.isExportColors());
+        includeChildrenCheckBox.setSelected(uiStateService.isIncludeChildren());
+        includeAttachmentsCheckBox.setSelected(uiStateService.isIncludeAttachments());
+        debugCheckBox.setSelected(uiStateService.isDebug());
         reportOnErrorCheckBox.setSelected(uiStateService.isReportOnError());
     }
 
@@ -217,10 +250,14 @@ public class ConfluenceExportToolWindow {
         uiStateService.setLastUrl(url == null ? "" : url.trim());
         uiStateService.setLastDirectory(directory == null ? "" : directory.trim());
         uiStateService.setExportColors(exportColors);
+        uiStateService.setIncludeChildren(includeChildrenCheckBox.isSelected());
+        uiStateService.setIncludeAttachments(includeAttachmentsCheckBox.isSelected());
+        uiStateService.setDebug(debugCheckBox.isSelected());
         uiStateService.setReportOnError(reportOnErrorCheckBox.isSelected());
     }
 
-    private void runExportInBackground(String url, Path targetDir, boolean exportColors, boolean reportOnError) {
+    private void runExportInBackground(String url, Path targetDir, boolean exportColors, boolean includeChildren,
+                                       boolean includeAttachments, boolean debug, boolean reportOnError) {
         exportButton.setEnabled(false);
         AtomicReference<Throwable> errorRef = new AtomicReference<>();
         AtomicReference<String> titleRef = new AtomicReference<>();
@@ -235,7 +272,8 @@ public class ConfluenceExportToolWindow {
             public void run(@NotNull ProgressIndicator indicator) {
                 try {
                     indicator.setText(message("toolwindow.ConfluenceExport.Progress.running.text"));
-                    String title = ConvertDocsUrlToAdoc.getInstance().convert(url, targetDir, exportColors, indicator);
+                    String title = ConvertDocsUrlToAdoc.getInstance()
+                            .convert(url, targetDir, exportColors, debug, includeChildren, includeAttachments, indicator);
                     titleRef.set(title);
                     // Принудительный отчёт по запросу пользователя (тихая ошибка без исключения).
                     if (reportOnError) {

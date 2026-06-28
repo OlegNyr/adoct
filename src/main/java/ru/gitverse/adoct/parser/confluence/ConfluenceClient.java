@@ -24,6 +24,7 @@ import ru.gitverse.adoct.parser.confluence.user.UserDto;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -105,10 +106,64 @@ public class ConfluenceClient implements ConfluenceGateway {
                 date, content, view, attachment);
     }
 
+    /**
+     * Находит ID страницы по ключу пространства и точному заголовку — для «человеческих» URL
+     * {@code /display/SPACE/Title}, где номера страницы нет.
+     *
+     * @return ID первой подходящей страницы, либо пусто, если такой страницы нет
+     */
+    @SneakyThrows
+    public Optional<String> findPageId(String spaceKey, String title) {
+        HttpUriRequest httpRequest = RequestBuilder.get()
+                .setUri(urlBase + "/content")
+                .addParameter("type", "page")
+                .addParameter("spaceKey", spaceKey)
+                .addParameter("title", title)
+                .addParameter("limit", "1")
+                .build();
+
+        String body = doRequestAndFailIfNot20x(httpRequest);
+        if (body == null) {
+            return Optional.empty();
+        }
+        ConfluenceSearchResult result = ObjectMapperExt.INSTANT.readValue(body, ConfluenceSearchResult.class);
+        return Optional.ofNullable(result.getResults())
+                .filter(results -> !results.isEmpty())
+                .map(results -> results.get(0).getId());
+    }
+
     public Map<String, LinkResult> getAttachments(String id) {
         Map<String, LinkResult> res = new HashMap<>();
         getAttachments(res, id, 0);
         return res;
+    }
+
+    /** ID прямых дочерних страниц (с пагинацией по 100). */
+    @SneakyThrows
+    @Override
+    public List<String> getChildPageIds(String id) {
+        List<String> ids = new ArrayList<>();
+        int start = 0;
+        int limit = 100;
+        while (true) {
+            HttpUriRequest httpRequest = RequestBuilder.get()
+                    .setUri(urlBase + "/content/%s/child/page".formatted(id))
+                    .addParameter("start", String.valueOf(start))
+                    .addParameter("limit", String.valueOf(limit))
+                    .build();
+            String body = doRequestAndFailIfNot20x(httpRequest);
+            if (body == null) {
+                break;
+            }
+            ConfluenceSearchResult result = ObjectMapperExt.INSTANT.readValue(body, ConfluenceSearchResult.class);
+            List<ResultDto> results = Optional.ofNullable(result.getResults()).orElse(List.of());
+            results.forEach(r -> ids.add(r.getId()));
+            if (results.size() < limit) {
+                break;
+            }
+            start += results.size();
+        }
+        return ids;
     }
 
     @SneakyThrows

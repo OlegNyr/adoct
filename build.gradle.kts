@@ -118,6 +118,14 @@ intellijPlatform {
 }
 
 tasks {
+    test {
+        // Пробрасываем -Dconfluence.* из JVM Gradle в форк тестов (live-стенд ConfluenceLivePublishIT).
+        // Без этого system-property с командной строки в дочерний JVM не попадают и тест скипается.
+        listOf("confluence.base", "confluence.url", "confluence.token", "confluence.dest").forEach { key ->
+            providers.systemProperty(key).orNull?.let { systemProperty(key, it) }
+        }
+    }
+
     // Полностью отключаем цепочку searchable-options. buildSearchableOptions поднимает
     // headless-IDE (падает на CI без libfreetype.so.6 и жрёт память), а зависимые
     // prepare/jarSearchableOptions без неё валятся на отсутствующем каталоге при clean.

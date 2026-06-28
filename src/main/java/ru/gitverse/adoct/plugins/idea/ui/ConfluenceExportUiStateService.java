@@ -42,6 +42,18 @@ public final class ConfluenceExportUiStateService implements PersistentStateComp
         state.reportOnError = reportOnError;
     }
 
+    public void setDebug(boolean debug) {
+        state.debug = debug;
+    }
+
+    public void setIncludeChildren(boolean includeChildren) {
+        state.includeChildren = includeChildren;
+    }
+
+    public void setIncludeAttachments(boolean includeAttachments) {
+        state.includeAttachments = includeAttachments;
+    }
+
     public String getLastUrl() {
         return state.lastUrl == null ? "" : state.lastUrl;
     }
@@ -58,10 +70,25 @@ public final class ConfluenceExportUiStateService implements PersistentStateComp
         return state.reportOnError;
     }
 
+    public boolean isDebug() {
+        return state.debug;
+    }
+
+    public boolean isIncludeChildren() {
+        return state.includeChildren;
+    }
+
+    public boolean isIncludeAttachments() {
+        return state.includeAttachments;
+    }
+
     public static final class StateData {
         public String lastUrl = "";
         public String lastDirectory = "";
         public boolean exportColors = false;
         public boolean reportOnError = false;
+        public boolean debug = false;
+        public boolean includeChildren = true;
+        public boolean includeAttachments = true;
     }
 }

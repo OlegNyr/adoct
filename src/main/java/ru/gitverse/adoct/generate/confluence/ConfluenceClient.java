@@ -53,6 +53,26 @@ public final class ConfluenceClient {
         return new PageVersion(title, number);
     }
 
+    /**
+     * Находит ID страницы по ключу пространства и точному заголовку (как в «человеческих» URL
+     * вида {@code /display/SPACE/Title}, где номера страницы нет).
+     *
+     * @return ID первой подходящей страницы, либо {@code null}, если такой страницы нет
+     */
+    public String findPageId(String spaceKey, String title) throws IOException, InterruptedException {
+        String query = "/rest/api/content?type=page&limit=1"
+                + "&spaceKey=" + URLEncoder.encode(spaceKey, StandardCharsets.UTF_8)
+                + "&title=" + URLEncoder.encode(title, StandardCharsets.UTF_8);
+        HttpRequest request = baseRequest(query).GET().build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        ensureSuccess(response, "найти страницу «" + title + "» в пространстве " + spaceKey);
+        JsonNode results = mapper.readTree(response.body()).path("results");
+        if (results.isArray() && !results.isEmpty()) {
+            return results.get(0).path("id").asText();
+        }
+        return null;
+    }
+
     /** Возвращает ключ пространства (space key), которому принадлежит страница. */
     public String getSpaceKey(String pageId) throws IOException, InterruptedException {
         HttpRequest request = baseRequest("/rest/api/content/" + pageId + "?expand=space")

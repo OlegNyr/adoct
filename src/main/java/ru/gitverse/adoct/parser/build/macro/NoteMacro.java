@@ -6,10 +6,14 @@ import ru.gitverse.adoct.parser.build.BlockBuilder;
 import ru.gitverse.adoct.parser.build.BuildContext;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/** Макросы {@code note}/{@code info}/{@code warning} → admonition {@code [NOTE]}/{@code [WARNING]}. */
+/**
+ * Confluence-admonition-макросы → AsciiDoc admonition.
+ * {@code note}/{@code info} → {@code [NOTE]}, {@code tip} → {@code [TIP]}, {@code warning} → {@code [WARNING]}.
+ */
 public final class NoteMacro extends AbstractNodeMacro {
 
     public NoteMacro(BlockBuilder blocks) {
@@ -18,12 +22,16 @@ public final class NoteMacro extends AbstractNodeMacro {
 
     @Override
     public Set<String> names() {
-        return Set.of("note", "warning", "info");
+        return Set.of("note", "warning", "info", "tip");
     }
 
     @Override
     public List<Block> build(String name, Map<String, String> params, Element body, BuildContext ctx) {
-        String kind = "warning".equalsIgnoreCase(name) ? "WARNING" : "NOTE";
+        String kind = switch (name == null ? "" : name.toLowerCase(Locale.ROOT)) {
+            case "warning" -> "WARNING";
+            case "tip" -> "TIP";
+            default -> "NOTE";
+        };
         return List.of(new Block.Admonition(kind, blankToNull(params.get("title")), children(body, ctx)));
     }
 }

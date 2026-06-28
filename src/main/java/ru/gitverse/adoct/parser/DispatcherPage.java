@@ -28,6 +28,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -37,34 +38,58 @@ public class DispatcherPage {
     private final ObjectMapper objectMapper;
     @Setter
     private boolean exportColors;
+    /**
+     * Отладочный режим: сохранять папку {@code source/} (сырой storage/view, content.json и кэш
+     * links.json). По умolчанию выключено — в обычном экспорте эта папка не нужна.
+     */
+    @Setter
+    private boolean debug;
+    /** Выгружать ли поддерево дочерних страниц (рекурсивно). По умолчанию да. */
+    @Setter
+    private boolean includeChildren = true;
+    /** Скачивать ли вложения (файлы, картинки) в {@code attache/}. По умолчанию да. */
+    @Setter
+    private boolean includeAttachments = true;
     /** Каталог выгрузки текущей страницы (для баг-репорта при падении). {@code null} до его создания. */
     @Getter
     private Path destination;
 
+    /**
+     * Выгружает страницу и всё её поддерево: каждая страница — в свою подпапку
+     * {@code <родитель>/<заголовок дочерней>/}. Возвращает заголовок корневой страницы.
+     */
     @SneakyThrows
     public String generate(String id, ProgressCallback progressCallback) {
+        return export(id, basePath, progressCallback);
+    }
 
+    @SneakyThrows
+    private String export(String id, Path baseDir, ProgressCallback progressCallback) {
         progressCallback.next("Загрузка основной страницы", 0.2D);
         ContentPage mainPage = client.getMainPage(id);
-        Path destination = basePath.resolve(mainPage.title());
+        Path destination = baseDir.resolve(sanitizeFolderName(mainPage.title()));
         this.destination = destination;
         Files.createDirectories(destination);
         ConvertStorageToAdoc converter = new ConvertStorageToAdoc(mainPage.content(), mainPage.view(), destination);
 
         Path source = destination.resolve("source");
-        Files.createDirectories(source);
-        Files.writeString(source.resolve("body.storage.html"), mainPage.content());
-        Files.writeString(source.resolve("view.storage.html"), mainPage.view());
-        objectMapper.writerWithDefaultPrettyPrinter().writeValue(source.resolve("content.json").toFile(), mainPage);
-
+        if (debug) {
+            Files.createDirectories(source);
+            Files.writeString(source.resolve("body.storage.html"), mainPage.content());
+            Files.writeString(source.resolve("view.storage.html"), mainPage.view());
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(source.resolve("content.json").toFile(), mainPage);
+        }
 
         Path attachmentFolder = destination.resolve("attache");
         Files.createDirectories(attachmentFolder);
 
-        Collection<LinkResult> countAttache = mainPage.attachment().values();
-        client.loadAttach(countAttache, attachmentFolder,
-                filename ->
-                        progressCallback.next("Загружаем вложение %s".formatted(filename), 0.3D / countAttache.size()));
+        if (includeAttachments) {
+            Collection<LinkResult> countAttache = mainPage.attachment().values();
+            client.loadAttach(countAttache, attachmentFolder,
+                    filename ->
+                            progressCallback.next("Загружаем вложение %s".formatted(filename),
+                                    0.3D / countAttache.size()));
+        }
 
         Map<LinksValue, LinkResult> loadLinksResolve = loadLinks(source);
         Map<String, String> resolveView = converter.resolveLink();
@@ -74,7 +99,9 @@ public class DispatcherPage {
                 link ->
                         progressCallback.next("Резолвим ссылку %s".formatted(link), 0.2D / links.size())
         );
-        saveLinks(source, linksResolvers);
+        if (debug) {
+            saveLinks(source, linksResolvers);
+        }
 
         progressCallback.next("Конвертируем страницу %s".formatted(mainPage.title()), 0.2D);
 
@@ -88,6 +115,7 @@ public class DispatcherPage {
         Map<MetadataKey, Object> metadata = Map.ofEntries(
                 Map.entry(MetadataKey.LINKS, linksResolvers),
                 Map.entry(MetadataKey.TITLE, mainPage.title()),
+                Map.entry(MetadataKey.PAGE_ID, id),
                 Map.entry(MetadataKey.URL, mainPage.url()),
                 Map.entry(MetadataKey.CREATE, mainPage.date()),
                 Map.entry(MetadataKey.ATTACH_FOLDER, attachmentFolder),
@@ -99,7 +127,37 @@ public class DispatcherPage {
                 Map.entry(MetadataKey.COLOR, exportColors)
         );
         converter.convert(metadata, attachmentFolder);
+
+        // files/ и attache/ оставляем, только если в них что-то есть.
+        deleteIfEmpty(filesDirectory);
+        deleteIfEmpty(attachmentFolder);
+
+        // Рекурсивно выгружаем дочерние страницы в подпапки текущей страницы.
+        if (includeChildren) {
+            for (String childId : client.getChildPageIds(id)) {
+                export(childId, destination, progressCallback);
+            }
+        }
         return mainPage.title();
+    }
+
+    /** Удаляет каталог, если он существует и пуст (чтобы не оставлять пустую {@code files/}). */
+    private static void deleteIfEmpty(Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) {
+            return;
+        }
+        try (Stream<Path> entries = Files.list(dir)) {
+            if (entries.findAny().isEmpty()) {
+                Files.delete(dir);
+            }
+        }
+    }
+
+    /** Делает из заголовка страницы безопасное имя папки (заменяет недопустимые в ФС символы на {@code _}). */
+    static String sanitizeFolderName(String title) {
+        String trimmed = title == null ? "" : title.strip();
+        String safe = trimmed.replaceAll("[<>:\"/\\\\|?*\\x00-\\x1F]", "_").replaceAll("[. ]+$", "");
+        return safe.isBlank() ? "page" : safe;
     }
 
     private void saveLinks(Path source, Map<LinksValue, LinkResult> linksResolvers) throws IOException {

@@ -7,6 +7,9 @@ build/
 ### generated
 /src/gen
 
+### локальная выгрузка/экспорт для ручной проверки
+/testexport/
+
 ### IntelliJ IDEA ###
 .idea/modules.xml
 .idea/jarRepositories.xml

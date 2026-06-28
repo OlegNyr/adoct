@@ -58,6 +58,24 @@ public class MacrosParserTest extends AbstractConvertParserTest {
     }
 
     @Test
+    public void tipMacroBecomesTipAdmonition() throws IOException {
+        String out = convert(
+                "<ac:structured-macro ac:name=\"tip\">"
+                + "<ac:rich-text-body><p>подсказка</p></ac:rich-text-body></ac:structured-macro>");
+        assertTrue(out.contains("[TIP]"));
+        assertTrue(out.contains("подсказка"));
+    }
+
+    @Test
+    public void infoMacroBecomesNoteAdmonition() throws IOException {
+        String out = convert(
+                "<ac:structured-macro ac:name=\"info\">"
+                + "<ac:rich-text-body><p>инфо</p></ac:rich-text-body></ac:structured-macro>");
+        assertTrue(out.contains("[NOTE]"));
+        assertTrue(out.contains("инфо"));
+    }
+
+    @Test
     public void tocMacro() throws IOException {
         String out = convert("<ac:structured-macro ac:name=\"toc\"/>");
         assertTrue(out.contains("toc::[]"));

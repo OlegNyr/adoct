@@ -41,6 +41,62 @@ public class PublishDocsToConfluenceTest {
     }
 
     @Test
+    public void extractDisplayRefParsesSpaceAndTitle() {
+        Optional<PublishDocsToConfluence.DisplayRef> ref =
+                PublishDocsToConfluence.extractDisplayRef("http://localhost:8090/display/DDDD/dsfdsaf");
+        assertTrue(ref.isPresent());
+        assertEquals("DDDD", ref.get().spaceKey());
+        assertEquals("dsfdsaf", ref.get().title());
+    }
+
+    @Test
+    public void extractDisplayRefDecodesTitle() {
+        Optional<PublishDocsToConfluence.DisplayRef> ref =
+                PublishDocsToConfluence.extractDisplayRef("http://localhost:8090/display/DEV/My+Page+Title");
+        assertTrue(ref.isPresent());
+        assertEquals("My Page Title", ref.get().title());
+    }
+
+    @Test
+    public void extractDisplayRefAbsentForViewpageUrl() {
+        assertFalse(PublishDocsToConfluence.extractDisplayRef(
+                "https://confluence.example.com/pages/viewpage.action?pageId=42").isPresent());
+    }
+
+    @Test
+    public void resolveConfluencyIdKeepsPlainNumber() throws Exception {
+        // числовой ID возвращается как есть, к серверу и файлу не обращаемся
+        assertEquals("12345", PublishDocsToConfluence.resolveConfluencyId(null, null, " 12345 "));
+    }
+
+    @Test
+    public void resolveConfluencyIdExtractsIdFromViewpageUrl() throws Exception {
+        // URL с pageId резолвится без обращения к серверу (file == null → без перезаписи)
+        assertEquals("42", PublishDocsToConfluence.resolveConfluencyId(
+                null, null, "https://confluence.example.com/pages/viewpage.action?pageId=42"));
+    }
+
+    @Test
+    public void resolveConfluencyIdNullForBlank() throws Exception {
+        assertEquals(null, PublishDocsToConfluence.resolveConfluencyId(null, null, "  "));
+        assertEquals(null, PublishDocsToConfluence.resolveConfluencyId(null, null, null));
+    }
+
+    @Test
+    public void replaceConfluencyIdSwapsExistingValue() {
+        String content = "= Заголовок\n:confluency-id: http://localhost:8090/display/DDDD/dsfdsaf\n\nтело\n";
+        String result = PublishDocsToConfluence.replaceConfluencyId(content, "98765");
+        assertEquals("= Заголовок\n:confluency-id: 98765\n\nтело\n", result);
+    }
+
+    @Test
+    public void replaceConfluencyIdInsertsWhenMissing() {
+        String content = "= Заголовок\n\nтело\n";
+        String result = PublishDocsToConfluence.replaceConfluencyId(content, "555");
+        assertEquals("= Заголовок\n:confluency-id: 555\n\nтело\n", result);
+    }
+
+    @Test
     public void parseKeywordsSplitsTrimsAndDropsBlanks() {
         assertEquals(List.of("alpha", "beta", "gamma"),
                 PublishDocsToConfluence.parseKeywords(" alpha, beta ,gamma , "));

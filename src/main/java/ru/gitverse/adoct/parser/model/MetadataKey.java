@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 public enum MetadataKey {
         LINKS("links"),
         TITLE("title"),
+        PAGE_ID("pageId"),
         URL("url"),
         CREATE("create"),
         ATTACH_FOLDER("attachFolder"),

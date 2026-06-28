@@ -1,0 +1,93 @@
+# Локальный стенд Atlassian для проверки плагина AsciiDocTools.
+# Confluence Data Center + Jira Software Data Center на общем PostgreSQL.
+#
+# Запуск:   docker compose up -d
+# Логи:     docker compose logs -f confluence
+# Остановка:docker compose down            (данные сохраняются в volume)
+# Снести:   docker compose down -v          (вместе с данными)
+#
+# После старта:
+#   Confluence -> http://localhost:8090   (мастер настройки + триал-лицензия DC)
+#   Jira       -> http://localhost:8080   (мастер настройки + триал-лицензия DC)
+#
+# Триал-лицензии Data Center бесплатно: https://my.atlassian.com (New trial license).
+# Параметры подключения к БД мастер уже подставит из ATL_* переменных ниже.
+#
+# ВАЖНО: плагин рассчитан на Server/DC REST API v1. Это именно DC-стенд, не Cloud.
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: atl-postgres
+    environment:
+      POSTGRES_USER: atlassian
+      POSTGRES_PASSWORD: atlassian
+      # init-скрипт создаст отдельные БД confluence и jira
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atlassian"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - atlassian
+
+  confluence:
+    image: atlassian/confluence:8.5    # 8.5 LTS (Data Center), API v1
+    container_name: confluence
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Параметры БД для мастера настройки
+      ATL_DB_TYPE: postgresql
+      ATL_DB_DRIVER: org.postgresql.Driver
+      ATL_JDBC_URL: jdbc:postgresql://postgres:5432/confluence
+      ATL_JDBC_USER: atlassian
+      ATL_JDBC_PASSWORD: atlassian
+      ATL_DB_SCHEMA_NAME: public
+      # Память JVM — поджать под слабую машину при необходимости
+      JVM_MINIMUM_MEMORY: 1024m
+      JVM_MAXIMUM_MEMORY: 2048m
+    ports:
+      - "8090:8090"   # web UI / REST API
+      - "8091:8091"   # Synchrony (совместное редактирование)
+    volumes:
+      - confluence-data:/var/atlassian/application-data/confluence
+    networks:
+      - atlassian
+
+  jira:
+    image: atlassian/jira-software:9.12   # 9.12 LTS (Data Center)
+    container_name: jira
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ATL_DB_TYPE: postgres72
+      ATL_DB_DRIVER: org.postgresql.Driver
+      ATL_JDBC_URL: jdbc:postgresql://postgres:5432/jira
+      ATL_JDBC_USER: atlassian
+      ATL_JDBC_PASSWORD: atlassian
+      ATL_DB_SCHEMA_NAME: public
+      JVM_MINIMUM_MEMORY: 1024m
+      JVM_MAXIMUM_MEMORY: 2048m
+    ports:
+      - "8080:8080"   # web UI / REST API
+    volumes:
+      - jira-data:/var/atlassian/application-data/jira
+    networks:
+      - atlassian
+
+volumes:
+  pg-data:
+  confluence-data:
+  jira-data:
+
+networks:
+  atlassian:
+    driver: bridge
