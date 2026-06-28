@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import lombok.extern.slf4j.Slf4j;
-import ru.gitverse.adoct.mcp.tools.ToolCatalog;
+import ru.gitverse.adoct.mcp.tools.ToolRegistry;
 import ru.gitverse.adoct.parser.confluence.ObjectMapperExt;
 
 import java.io.IOException;
@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * MCP-сервер поверх JDK {@link HttpServer}: минимальная реализация JSON-RPC 2.0 / MCP
  * (методы {@code initialize}, {@code tools/list}, {@code tools/call}, {@code ping}) на одном
  * эндпоинте {@code POST /mcp} (Streamable HTTP, ответ — {@code application/json}). Без внешнего
- * MCP SDK и веб-контейнера. Read-only набор тулов — см. {@link ToolCatalog}.
+ * MCP SDK и веб-контейнера. Набор инструментов собирает {@link ToolRegistry}.
  */
 @Slf4j
 public final class AdoctMcpServer implements AutoCloseable {
@@ -71,7 +71,7 @@ public final class AdoctMcpServer implements AutoCloseable {
     public AdoctMcpServer(EndpointSupplier endpoints, String serverName, String serverVersion) {
         this.serverName = serverName;
         this.serverVersion = serverVersion;
-        this.tools = new ToolCatalog(endpoints).tools();
+        this.tools = new ToolRegistry(endpoints).tools();
         for (McpTool tool : tools) {
             byName.put(tool.name(), tool);
         }
