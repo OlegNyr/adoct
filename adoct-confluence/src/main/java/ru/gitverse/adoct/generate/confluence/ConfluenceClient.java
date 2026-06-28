@@ -219,6 +219,160 @@ public final class ConfluenceClient {
         http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
     }
 
+    // ---- страницы: удаление / перемещение / история ----
+
+    /** Удаляет страницу: {@code DELETE /rest/api/content/{id}}. */
+    public void deletePage(String pageId) throws IOException, InterruptedException {
+        send("DELETE", "/rest/api/content/" + pageId, null, "удалить страницу " + pageId);
+    }
+
+    /**
+     * Перемещает страницу относительно целевой ({@code position} = append|above|below):
+     * {@code PUT /rest/api/content/{id}/move/{position}/{targetId}}.
+     */
+    public JsonNode movePage(String pageId, String position, String targetId)
+            throws IOException, InterruptedException {
+        return sendJson("PUT", "/rest/api/content/" + pageId + "/move/" + position + "/" + targetId, null,
+                "переместить страницу " + pageId);
+    }
+
+    /** Список версий страницы: {@code GET /rest/api/content/{id}/version}. */
+    public JsonNode getVersions(String pageId) throws IOException, InterruptedException {
+        return getJson("/rest/api/content/" + pageId + "/version", "получить версии страницы " + pageId);
+    }
+
+    /** Текущее тело страницы (storage) + версия: {@code GET /rest/api/content/{id}?expand=body.storage,version}. */
+    public JsonNode getPageStorageCurrent(String pageId) throws IOException, InterruptedException {
+        return getJson("/rest/api/content/" + pageId + "?expand=body.storage,version",
+                "получить тело страницы " + pageId);
+    }
+
+    /** Историческая версия тела: {@code GET .../{id}?status=historical&version=N&expand=body.storage,version}. */
+    public JsonNode getPageStorageHistorical(String pageId, int version) throws IOException, InterruptedException {
+        return getJson("/rest/api/content/" + pageId + "?status=historical&version=" + version
+                + "&expand=body.storage,version", "получить версию " + version + " страницы " + pageId);
+    }
+
+    // ---- комментарии ----
+
+    /** Комментарии страницы: {@code GET /rest/api/content/{id}/child/comment?expand=body.storage,version}. */
+    public JsonNode getComments(String pageId) throws IOException, InterruptedException {
+        return getJson("/rest/api/content/" + pageId + "/child/comment?expand=body.storage,version",
+                "получить комментарии страницы " + pageId);
+    }
+
+    /**
+     * Добавляет комментарий (storage XHTML). Если задан {@code parentCommentId} — это ответ на комментарий.
+     * {@code POST /rest/api/content}. Возвращает id созданного комментария.
+     */
+    public String addComment(String pageId, String parentCommentId, String storageXhtml)
+            throws IOException, InterruptedException {
+        ObjectNode payload = mapper.createObjectNode();
+        payload.put("type", "comment");
+        ObjectNode container = payload.putObject("container");
+        container.put("id", pageId);
+        container.put("type", "page");
+        if (parentCommentId != null && !parentCommentId.isBlank()) {
+            payload.putArray("ancestors").addObject().put("id", parentCommentId);
+        }
+        ObjectNode storage = payload.putObject("body").putObject("storage");
+        storage.put("value", storageXhtml);
+        storage.put("representation", "storage");
+        JsonNode created = sendJson("POST", "/rest/api/content", payload, "добавить комментарий к " + pageId);
+        return created == null ? null : created.path("id").asText();
+    }
+
+    // ---- метки ----
+
+    /** Метки страницы: {@code GET /rest/api/content/{id}/label}. */
+    public JsonNode getLabels(String pageId) throws IOException, InterruptedException {
+        return getJson("/rest/api/content/" + pageId + "/label", "получить метки страницы " + pageId);
+    }
+
+    /** Удаляет метку: {@code DELETE /rest/api/content/{id}/label?name=...}. */
+    public void deleteLabel(String pageId, String name) throws IOException, InterruptedException {
+        send("DELETE", "/rest/api/content/" + pageId + "/label?name="
+                + URLEncoder.encode(name, StandardCharsets.UTF_8), null, "удалить метку у " + pageId);
+    }
+
+    // ---- вложения ----
+
+    /** Вложения страницы: {@code GET /rest/api/content/{id}/child/attachment?expand=version}. */
+    public JsonNode getAttachments(String pageId) throws IOException, InterruptedException {
+        return getJson("/rest/api/content/" + pageId + "/child/attachment?expand=version",
+                "получить вложения страницы " + pageId);
+    }
+
+    /** Удаляет вложение по его content-id: {@code DELETE /rest/api/content/{attachmentId}}. */
+    public void deleteAttachment(String attachmentId) throws IOException, InterruptedException {
+        send("DELETE", "/rest/api/content/" + attachmentId, null, "удалить вложение " + attachmentId);
+    }
+
+    /** Скачивает вложение страницы по имени в {@code targetDir}; возвращает сохранённое имя. */
+    public String downloadAttachment(String pageId, String fileName, Path targetDir)
+            throws IOException, InterruptedException {
+        String encoded = URLEncoder.encode(fileName, StandardCharsets.UTF_8);
+        JsonNode results = getJson("/rest/api/content/" + pageId + "/child/attachment?filename=" + encoded,
+                "найти вложение " + fileName).path("results");
+        if (!results.isArray() || results.isEmpty()) {
+            throw new IOException("Вложение не найдено: " + fileName + " на странице " + pageId);
+        }
+        String download = results.get(0).path("_links").path("download").asText();
+        if (download.isBlank()) {
+            throw new IOException("Нет ссылки на скачивание вложения " + fileName);
+        }
+        Files.createDirectories(targetDir);
+        Path out = targetDir.resolve(fileName);
+        Files.write(out, downloadBinary(download));
+        return fileName;
+    }
+
+    // ---- generic helpers ----
+
+    private JsonNode getJson(String path, String action) throws IOException, InterruptedException {
+        HttpRequest request = baseRequest(path).GET().build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        ensureSuccess(response, action);
+        return mapper.readTree(response.body());
+    }
+
+    private JsonNode sendJson(String method, String path, JsonNode payload, String action)
+            throws IOException, InterruptedException {
+        HttpResponse<String> response = exchange(method, path, payload, action);
+        String body = response.body();
+        return body == null || body.isBlank() ? null : mapper.readTree(body);
+    }
+
+    private void send(String method, String path, JsonNode payload, String action)
+            throws IOException, InterruptedException {
+        exchange(method, path, payload, action);
+    }
+
+    private HttpResponse<String> exchange(String method, String path, JsonNode payload, String action)
+            throws IOException, InterruptedException {
+        HttpRequest.Builder builder = baseRequest(path);
+        HttpRequest.BodyPublisher pub = payload == null
+                ? HttpRequest.BodyPublishers.noBody()
+                : HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload), StandardCharsets.UTF_8);
+        if (payload != null) {
+            builder.header("Content-Type", "application/json");
+        }
+        HttpRequest request = builder.method(method, pub).build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        ensureSuccess(response, action);
+        return response;
+    }
+
+    private byte[] downloadBinary(String path) throws IOException, InterruptedException {
+        HttpRequest request = baseRequest(path).GET().build();
+        HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        int code = response.statusCode();
+        if (code < 200 || code >= 300) {
+            throw new IOException("Не удалось скачать вложение: HTTP " + code + " — " + path);
+        }
+        return response.body();
+    }
+
     private HttpRequest.Builder baseRequest(String path) {
         return HttpRequest.newBuilder(URI.create(baseUrl + path))
                 .timeout(REQUEST_TIMEOUT)

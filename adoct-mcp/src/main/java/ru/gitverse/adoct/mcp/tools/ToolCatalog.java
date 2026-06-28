@@ -86,7 +86,21 @@ public final class ToolCatalog {
                 confluenceGetChildPages(),
                 confluenceGetUser(),
                 confluenceExportTreeToAdoc(),
-                confluencePublishAdoc());
+                confluencePublishAdoc(),
+                confluenceDeletePage(),
+                confluenceMovePage(),
+                confluenceGetPageHistory(),
+                confluenceGetPageDiff(),
+                confluenceGetComments(),
+                confluenceAddComment(),
+                confluenceReplyToComment(),
+                confluenceGetLabels(),
+                confluenceAddLabels(),
+                confluenceDeleteLabel(),
+                confluenceGetAttachments(),
+                confluenceUploadAttachment(),
+                confluenceDownloadAttachment(),
+                confluenceDeleteAttachment());
     }
 
     // ---- Jira -------------------------------------------------------------
@@ -703,6 +717,190 @@ public final class ToolCatalog {
         });
     }
 
+    // ---- Confluence parity: pages / comments / labels / attachments -------
+
+    private McpTool confluenceDeletePage() {
+        ObjectNode schema = InputSchema.object()
+                .str("pageId", "ID страницы", true)
+                .str("host", "Хост Confluence; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("confluence_delete_page", "Удалить страницу Confluence.", schema, args -> {
+            String pageId = reqStr(args, "pageId");
+            confluencePublish(args).deletePage(pageId);
+            return ok(mapper.createObjectNode().put("deleted", pageId));
+        });
+    }
+
+    private McpTool confluenceMovePage() {
+        ObjectNode schema = InputSchema.object()
+                .str("pageId", "ID перемещаемой страницы", true)
+                .str("targetId", "ID целевой страницы", true)
+                .str("position", "append|above|below (по умолчанию append)", false)
+                .str("host", "Хост Confluence; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("confluence_move_page",
+                "Переместить страницу Confluence относительно целевой.", schema, args -> {
+            String position = firstNonBlank(text(args, "position"), "append");
+            return ok(confluencePublish(args).movePage(
+                    reqStr(args, "pageId"), position, reqStr(args, "targetId")));
+        });
+    }
+
+    private McpTool confluenceGetPageHistory() {
+        ObjectNode schema = InputSchema.object()
+                .str("pageId", "ID страницы", true)
+                .str("host", "Хост Confluence; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("confluence_get_page_history", "Версии страницы Confluence.", schema, args ->
+                ok(confluencePublish(args).getVersions(reqStr(args, "pageId"))));
+    }
+
+    private McpTool confluenceGetPageDiff() {
+        ObjectNode schema = InputSchema.object()
+                .str("pageId", "ID страницы", true)
+                .integer("fromVersion", "Номер исходной (исторической) версии", true)
+                .integer("toVersion", "Номер целевой версии; без него — текущая", false)
+                .str("host", "Хост Confluence; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("confluence_get_page_diff",
+                "Тела двух версий страницы (storage) для сравнения.", schema, args -> {
+            ru.gitverse.adoct.generate.confluence.ConfluenceClient client = confluencePublish(args);
+            String pageId = reqStr(args, "pageId");
+            JsonNode from = client.getPageStorageHistorical(pageId, reqInt(args, "fromVersion"));
+            JsonNode toNode;
+            Integer toVersion = optInteger(args, "toVersion");
+            toNode = toVersion == null ? client.getPageStorageCurrent(pageId)
+                    : client.getPageStorageHistorical(pageId, toVersion);
+            ObjectNode out = mapper.createObjectNode();
+            out.set("from", versionStorage(from));
+            out.set("to", versionStorage(toNode));
+            return ok(out);
+        });
+    }
+
+    private McpTool confluenceGetComments() {
+        ObjectNode schema = InputSchema.object()
+                .str("pageId", "ID страницы", true)
+                .str("host", "Хост Confluence; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("confluence_get_comments", "Комментарии страницы Confluence.", schema, args ->
+                ok(confluencePublish(args).getComments(reqStr(args, "pageId"))));
+    }
+
+    private McpTool confluenceAddComment() {
+        ObjectNode schema = InputSchema.object()
+                .str("pageId", "ID страницы", true)
+                .str("body", "Текст комментария", true)
+                .str("host", "Хост Confluence; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("confluence_add_comment", "Добавить комментарий к странице Confluence.", schema, args -> {
+            String id = confluencePublish(args).addComment(
+                    reqStr(args, "pageId"), null, paragraph(reqStr(args, "body")));
+            return ok(mapper.createObjectNode().put("commentId", id));
+        });
+    }
+
+    private McpTool confluenceReplyToComment() {
+        ObjectNode schema = InputSchema.object()
+                .str("pageId", "ID страницы", true)
+                .str("parentCommentId", "ID комментария, на который отвечаем", true)
+                .str("body", "Текст ответа", true)
+                .str("host", "Хост Confluence; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("confluence_reply_to_comment", "Ответить на комментарий Confluence.", schema, args -> {
+            String id = confluencePublish(args).addComment(
+                    reqStr(args, "pageId"), reqStr(args, "parentCommentId"), paragraph(reqStr(args, "body")));
+            return ok(mapper.createObjectNode().put("commentId", id));
+        });
+    }
+
+    private McpTool confluenceGetLabels() {
+        ObjectNode schema = InputSchema.object()
+                .str("pageId", "ID страницы", true)
+                .str("host", "Хост Confluence; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("confluence_get_labels", "Метки страницы Confluence.", schema, args ->
+                ok(confluencePublish(args).getLabels(reqStr(args, "pageId"))));
+    }
+
+    private McpTool confluenceAddLabels() {
+        ObjectNode schema = InputSchema.object()
+                .str("pageId", "ID страницы", true)
+                .arr("labels", "Массив меток", true)
+                .str("host", "Хост Confluence; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("confluence_add_labels", "Добавить метки странице Confluence.", schema, args -> {
+            String pageId = reqStr(args, "pageId");
+            confluencePublish(args).addLabels(pageId, strList(args, "labels"));
+            return ok(mapper.createObjectNode().put("labeled", pageId));
+        });
+    }
+
+    private McpTool confluenceDeleteLabel() {
+        ObjectNode schema = InputSchema.object()
+                .str("pageId", "ID страницы", true)
+                .str("name", "Имя метки", true)
+                .str("host", "Хост Confluence; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("confluence_delete_label", "Удалить метку у страницы Confluence.", schema, args -> {
+            confluencePublish(args).deleteLabel(reqStr(args, "pageId"), reqStr(args, "name"));
+            return ok(mapper.createObjectNode().put("removed", true));
+        });
+    }
+
+    private McpTool confluenceGetAttachments() {
+        ObjectNode schema = InputSchema.object()
+                .str("pageId", "ID страницы", true)
+                .str("host", "Хост Confluence; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("confluence_get_attachments", "Вложения страницы Confluence.", schema, args ->
+                ok(confluencePublish(args).getAttachments(reqStr(args, "pageId"))));
+    }
+
+    private McpTool confluenceUploadAttachment() {
+        ObjectNode schema = InputSchema.object()
+                .str("pageId", "ID страницы", true)
+                .str("filePath", "Абсолютный путь файла", true)
+                .str("host", "Хост Confluence; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("confluence_upload_attachment",
+                "Загрузить файл как вложение страницы Confluence.", schema, args -> {
+            String pageId = reqStr(args, "pageId");
+            confluencePublish(args).uploadAttachment(pageId, Path.of(reqStr(args, "filePath")));
+            return ok(mapper.createObjectNode().put("uploaded", pageId));
+        });
+    }
+
+    private McpTool confluenceDownloadAttachment() {
+        ObjectNode schema = InputSchema.object()
+                .str("pageId", "ID страницы", true)
+                .str("fileName", "Имя вложения", true)
+                .str("targetDir", "Абсолютный путь папки назначения", true)
+                .str("host", "Хост Confluence; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("confluence_download_attachment",
+                "Скачать вложение страницы Confluence в папку.", schema, args -> {
+            String saved = confluencePublish(args).downloadAttachment(
+                    reqStr(args, "pageId"), reqStr(args, "fileName"), Path.of(reqStr(args, "targetDir")));
+            ObjectNode out = mapper.createObjectNode();
+            out.put("file", saved);
+            out.put("targetDir", reqStr(args, "targetDir"));
+            return ok(out);
+        });
+    }
+
+    private McpTool confluenceDeleteAttachment() {
+        ObjectNode schema = InputSchema.object()
+                .str("attachmentId", "Content-ID вложения", true)
+                .str("host", "Хост Confluence; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("confluence_delete_attachment", "Удалить вложение Confluence.", schema, args -> {
+            String id = reqStr(args, "attachmentId");
+            confluencePublish(args).deleteAttachment(id);
+            return ok(mapper.createObjectNode().put("deleted", id));
+        });
+    }
+
     // ---- helpers ----------------------------------------------------------
 
     private AtlassianEndpoint endpoint(JsonNode args) {
@@ -721,6 +919,56 @@ public final class ToolCatalog {
     private JiraClient jira(JsonNode args) {
         AtlassianEndpoint ep = endpoint(args);
         return new JiraClient(ep.host(), ep.token());
+    }
+
+    private ru.gitverse.adoct.generate.confluence.ConfluenceClient confluencePublish(JsonNode args) {
+        AtlassianEndpoint ep = endpoint(args);
+        return new ru.gitverse.adoct.generate.confluence.ConfluenceClient(ep.host(), ep.token());
+    }
+
+    private ObjectNode versionStorage(JsonNode content) {
+        ObjectNode o = mapper.createObjectNode();
+        o.put("version", content.path("version").path("number").asInt());
+        o.put("storage", content.path("body").path("storage").path("value").asText());
+        return o;
+    }
+
+    static String paragraph(String text) {
+        return "<p>" + xmlEscape(text) + "</p>";
+    }
+
+    static String xmlEscape(String s) {
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    static int reqInt(JsonNode args, String name) {
+        JsonNode n = args == null ? null : args.get(name);
+        if (n == null || n.isNull()) {
+            throw new IllegalArgumentException("Отсутствует обязательный параметр: " + name);
+        }
+        if (n.isNumber()) {
+            return n.asInt();
+        }
+        try {
+            return Integer.parseInt(n.asText().trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Параметр " + name + " должен быть числом");
+        }
+    }
+
+    static Integer optInteger(JsonNode args, String name) {
+        JsonNode n = args == null ? null : args.get(name);
+        if (n == null || n.isNull()) {
+            return null;
+        }
+        if (n.isNumber()) {
+            return n.asInt();
+        }
+        try {
+            return Integer.parseInt(n.asText().trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /** Проект Jira: из аргумента или дефолтный из настроек; ошибка, если нет ни того ни другого. */
