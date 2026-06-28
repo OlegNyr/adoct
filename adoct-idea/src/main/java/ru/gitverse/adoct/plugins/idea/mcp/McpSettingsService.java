@@ -44,9 +44,21 @@ public final class McpSettingsService implements PersistentStateComponent<McpSet
         return state.port <= 0 ? 7337 : state.port;
     }
 
+    /** Проект Jira по умолчанию (однопроектная инсталляция); пусто = не задан. */
+    public String getDefaultJiraProject() {
+        return state.defaultJiraProject == null ? "" : state.defaultJiraProject.trim();
+    }
+
+    /** Пространство Confluence по умолчанию; пусто = не задано. */
+    public String getDefaultConfluenceSpace() {
+        return state.defaultConfluenceSpace == null ? "" : state.defaultConfluenceSpace.trim();
+    }
+
     public static final class StateData {
         public boolean enabled = true;
         public String bindHost = "127.0.0.1";
         public int port = 7337;
+        public String defaultJiraProject = "";
+        public String defaultConfluenceSpace = "";
     }
 }

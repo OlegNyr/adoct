@@ -12,6 +12,16 @@ public interface EndpointSupplier {
     /** Все сконфигурированные точки подключения. */
     List<AtlassianEndpoint> all();
 
+    /** Проект Jira по умолчанию (когда инсталляция «однопроектная») — подставляется, если не задан в аргументах. */
+    default Optional<String> defaultJiraProject() {
+        return Optional.empty();
+    }
+
+    /** Пространство Confluence по умолчанию — подставляется, если не задано в аргументах. */
+    default Optional<String> defaultConfluenceSpace() {
+        return Optional.empty();
+    }
+
     /** Точка по умолчанию — первая сконфигурированная (если есть). */
     default Optional<AtlassianEndpoint> defaultEndpoint() {
         return all().stream().findFirst();

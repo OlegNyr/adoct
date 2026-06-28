@@ -53,6 +53,17 @@ public final class McpServerService implements Disposable {
         });
     }
 
+    /** Перезапуск с актуальными настройками (после изменения порта/хоста/включения). */
+    public synchronized void restart() {
+        AdoctMcpServer mcp = server;
+        if (mcp != null) {
+            mcp.close();
+            server = null;
+        }
+        started.set(false);
+        startOnce();
+    }
+
     @Override
     public void dispose() {
         AdoctMcpServer mcp = server;

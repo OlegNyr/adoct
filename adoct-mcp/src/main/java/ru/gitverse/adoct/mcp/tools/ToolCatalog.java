@@ -107,7 +107,7 @@ public final class ToolCatalog {
 
     private McpTool jiraCreateIssue() {
         ObjectNode schema = InputSchema.object()
-                .str("projectKey", "Ключ проекта", true)
+                .str("projectKey", "Ключ проекта (по умолчанию из настроек)", false)
                 .str("issueType", "Тип задачи (например Task, Story, Bug)", true)
                 .str("summary", "Заголовок", true)
                 .str("description", "Описание (необязательно)", false)
@@ -116,7 +116,7 @@ public final class ToolCatalog {
         return new McpTool("jira_create_issue", "Создать задачу Jira.", schema, args -> {
             ObjectNode payload = mapper.createObjectNode();
             ObjectNode fields = payload.putObject("fields");
-            fields.putObject("project").put("key", reqStr(args, "projectKey"));
+            fields.putObject("project").put("key", requireProject(args));
             fields.putObject("issuetype").put("name", reqStr(args, "issueType"));
             fields.put("summary", reqStr(args, "summary"));
             String description = text(args, "description");
@@ -199,11 +199,12 @@ public final class ToolCatalog {
 
     private McpTool jiraListBoards() {
         ObjectNode schema = InputSchema.object()
-                .str("projectKeyOrId", "Фильтр по проекту (необязательно)", false)
+                .str("projectKeyOrId", "Фильтр по проекту (по умолчанию из настроек)", false)
                 .str("host", "Хост Jira; иначе хост по умолчанию", false)
                 .build();
         return new McpTool("jira_list_boards", "Agile-доски Jira (опц. фильтр по проекту).", schema, args ->
-                ToolResult.ok(mapper.writeValueAsString(jira(args).listBoards(text(args, "projectKeyOrId")))));
+                ToolResult.ok(mapper.writeValueAsString(jira(args).listBoards(
+                        firstNonBlank(text(args, "projectKeyOrId"), endpoints.defaultJiraProject().orElse(null))))));
     }
 
     private McpTool jiraListSprints() {
@@ -266,27 +267,28 @@ public final class ToolCatalog {
     private McpTool confluenceSearch() {
         ObjectNode schema = InputSchema.object()
                 .str("query", "Заголовок страницы для поиска (CQL: точное, затем нечёткое)", true)
-                .str("spaceKey", "Ограничить пространством (необязательно)", false)
+                .str("spaceKey", "Ограничить пространством (по умолчанию из настроек)", false)
                 .str("host", "Хост Confluence; иначе хост по умолчанию", false)
                 .build();
         return new McpTool("confluence_search",
                 "Найти страницы Confluence по заголовку (CQL).", schema, args -> {
             ConfluenceClient client = confluence(args);
-            List<LinkResult> results = client.search(reqStr(args, "query"), text(args, "spaceKey"));
+            List<LinkResult> results = client.search(reqStr(args, "query"),
+                    firstNonBlank(text(args, "spaceKey"), endpoints.defaultConfluenceSpace().orElse(null)));
             return ToolResult.ok(mapper.writeValueAsString(results));
         });
     }
 
     private McpTool confluenceFindPage() {
         ObjectNode schema = InputSchema.object()
-                .str("spaceKey", "Ключ пространства", true)
+                .str("spaceKey", "Ключ пространства (по умолчанию из настроек)", false)
                 .str("title", "Точный заголовок страницы", true)
                 .str("host", "Хост Confluence; иначе хост по умолчанию", false)
                 .build();
         return new McpTool("confluence_find_page",
                 "Найти ID страницы по пространству и точному заголовку.", schema, args -> {
             ConfluenceClient client = confluence(args);
-            Optional<String> id = client.findPageId(reqStr(args, "spaceKey"), reqStr(args, "title"));
+            Optional<String> id = client.findPageId(requireSpace(args), reqStr(args, "title"));
             ObjectNode out = mapper.createObjectNode();
             out.put("pageId", id.orElse(null));
             return ToolResult.ok(mapper.writeValueAsString(out));
@@ -395,6 +397,28 @@ public final class ToolCatalog {
     private JiraClient jira(JsonNode args) {
         AtlassianEndpoint ep = endpoint(args);
         return new JiraClient(ep.host(), ep.token());
+    }
+
+    /** Проект Jira: из аргумента или дефолтный из настроек; ошибка, если нет ни того ни другого. */
+    private String requireProject(JsonNode args) {
+        String project = firstNonBlank(text(args, "projectKey"), endpoints.defaultJiraProject().orElse(null));
+        if (project == null || project.isBlank()) {
+            throw new IllegalArgumentException("Не задан projectKey и не настроен проект Jira по умолчанию");
+        }
+        return project;
+    }
+
+    /** Пространство Confluence: из аргумента или дефолтное из настроек; ошибка, если нет ни того ни другого. */
+    private String requireSpace(JsonNode args) {
+        String space = firstNonBlank(text(args, "spaceKey"), endpoints.defaultConfluenceSpace().orElse(null));
+        if (space == null || space.isBlank()) {
+            throw new IllegalArgumentException("Не задан spaceKey и не настроено пространство Confluence по умолчанию");
+        }
+        return space;
+    }
+
+    static String firstNonBlank(String a, String b) {
+        return a != null && !a.isBlank() ? a : b;
     }
 
     private static String resolvePageId(ConfluenceClient client, String pageId, String url)

@@ -23,6 +23,11 @@
                 parentId="tools"
                 displayName="AsciiDocTools Confluence"
                 instance="ru.gitverse.adoct.plugins.idea.settings.ConfluenceSettingsConfigurable"/>
+        <applicationConfigurable
+                id="ru.gitverse.adoct.plugins.idea.mcp.settings"
+                parentId="tools"
+                displayName="AsciiDocTools MCP"
+                instance="ru.gitverse.adoct.plugins.idea.mcp.McpSettingsConfigurable"/>
         <notificationGroup id="AsciiDocTools.Notifications"
                            displayType="BALLOON"
                            isLogByDefault="true"/>

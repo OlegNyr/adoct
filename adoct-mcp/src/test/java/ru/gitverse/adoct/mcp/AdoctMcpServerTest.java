@@ -28,12 +28,17 @@ public class AdoctMcpServerTest {
     private HttpServer jiraStub;
     private AdoctMcpServer mcp;
     private String mcpUrl;
+    private final java.util.concurrent.atomic.AtomicReference<String> lastJiraBody =
+            new java.util.concurrent.atomic.AtomicReference<>("");
 
     @Before
     public void setUp() throws IOException {
         jiraStub = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         jiraStub.createContext("/", exchange -> {
-            byte[] body = "{\"total\":1,\"issues\":[{\"key\":\"ABC-1\"}]}".getBytes(StandardCharsets.UTF_8);
+            lastJiraBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            // совместимо и с поиском (total/issues), и с созданием (key)
+            byte[] body = "{\"key\":\"DEF-1\",\"total\":1,\"issues\":[{\"key\":\"ABC-1\"}]}"
+                    .getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, body.length);
             exchange.getResponseBody().write(body);
             exchange.close();
@@ -41,7 +46,17 @@ public class AdoctMcpServerTest {
         jiraStub.start();
         String host = "http://127.0.0.1:" + jiraStub.getAddress().getPort();
 
-        EndpointSupplier supplier = () -> List.of(new AtlassianEndpoint(host, "tok"));
+        EndpointSupplier supplier = new EndpointSupplier() {
+            @Override
+            public List<AtlassianEndpoint> all() {
+                return List.of(new AtlassianEndpoint(host, "tok"));
+            }
+
+            @Override
+            public java.util.Optional<String> defaultJiraProject() {
+                return java.util.Optional.of("DEF");
+            }
+        };
         mcp = new AdoctMcpServer(supplier, "adoct", "test");
         mcp.start("127.0.0.1", 0);
         mcpUrl = "http://127.0.0.1:" + mcp.port() + "/mcp";
@@ -89,6 +104,15 @@ public class AdoctMcpServerTest {
                 .body().path("result");
         assertFalse(result.path("isError").asBoolean());
         assertTrue(result.path("content").get(0).path("text").asText().contains("ABC-1"));
+    }
+
+    @Test
+    public void jiraCreateIssueUsesDefaultProjectWhenOmitted() throws Exception {
+        JsonNode result = rpc("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jira_create_issue\",\"arguments\":"
+                + "{\"issueType\":\"Task\",\"summary\":\"hi\"}}}").body().path("result");
+        assertFalse(result.path("isError").asBoolean());
+        assertTrue(lastJiraBody.get(), lastJiraBody.get().contains("\"key\":\"DEF\""));
     }
 
     @Test
