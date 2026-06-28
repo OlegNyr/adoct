@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -54,6 +55,40 @@ public final class JiraClient {
             out.put("description", description.asText());
         }
         return payload;
+    }
+
+    /**
+     * Читает задачу целиком. {@code fields} — список полей через запятую (например {@code "summary,status"})
+     * или {@code "*all"}; при пустом значении берётся базовый набор {@link #FIELDS}.
+     *
+     * @return корневой JSON ответа Jira (вызывающий читает {@code .path("fields")})
+     */
+    public JsonNode getIssue(String issueKey, String fields) throws IOException, InterruptedException {
+        String wanted = (fields == null || fields.isBlank()) ? FIELDS : fields.trim();
+        HttpRequest request = baseRequest("/rest/api/2/issue/" + issueKey
+                + "?fields=" + URLEncoder.encode(wanted, StandardCharsets.UTF_8))
+                .GET()
+                .build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        ensureSuccess(response, "получить задачу " + issueKey);
+        return mapper.readTree(response.body());
+    }
+
+    /**
+     * Ищет задачи по JQL. {@code maxResults} ограничивается диапазоном 1..100 (по умолчанию 50 при &le; 0).
+     *
+     * @return корневой JSON ответа поиска ({@code total}, {@code issues[]})
+     */
+    public JsonNode searchJql(String jql, int maxResults) throws IOException, InterruptedException {
+        int limit = maxResults <= 0 ? 50 : Math.min(maxResults, 100);
+        HttpRequest request = baseRequest("/rest/api/2/search"
+                + "?jql=" + URLEncoder.encode(jql, StandardCharsets.UTF_8)
+                + "&maxResults=" + limit)
+                .GET()
+                .build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        ensureSuccess(response, "выполнить поиск JQL");
+        return mapper.readTree(response.body());
     }
 
     /** Создаёт задачу из payload {@code {"fields": {...}}} и возвращает ключ новой задачи. */

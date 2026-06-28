@@ -13,6 +13,7 @@ include(
     ":adoct-confluence",
     ":adoct-jira",
     ":adoct-anonymize",
+    ":adoct-mcp",
     ":adoct-idea",
 )
 

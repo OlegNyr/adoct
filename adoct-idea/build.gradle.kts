@@ -21,6 +21,7 @@ dependencies {
     implementation(project(":adoct-confluence"))
     implementation(project(":adoct-jira"))
     implementation(project(":adoct-anonymize"))
+    implementation(project(":adoct-mcp"))
 
     compileOnly(libs.slf4jApi)
     testImplementation(libs.junit)

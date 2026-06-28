@@ -1,0 +1,120 @@
+package ru.gitverse.adoct.mcp;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpServer;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+/** End-to-end проверка MCP-сервера через реальные HTTP-запросы; Jira-вызов идёт в локальный stub. */
+public class AdoctMcpServerTest {
+
+    private final ObjectMapper mapper = new ObjectMapper();
+    private final HttpClient http = HttpClient.newHttpClient();
+    private HttpServer jiraStub;
+    private AdoctMcpServer mcp;
+    private String mcpUrl;
+
+    @Before
+    public void setUp() throws IOException {
+        jiraStub = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        jiraStub.createContext("/", exchange -> {
+            byte[] body = "{\"total\":1,\"issues\":[{\"key\":\"ABC-1\"}]}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        jiraStub.start();
+        String host = "http://127.0.0.1:" + jiraStub.getAddress().getPort();
+
+        EndpointSupplier supplier = () -> List.of(new AtlassianEndpoint(host, "tok"));
+        mcp = new AdoctMcpServer(supplier, "adoct", "test");
+        mcp.start("127.0.0.1", 0);
+        mcpUrl = "http://127.0.0.1:" + mcp.port() + "/mcp";
+    }
+
+    @After
+    public void tearDown() {
+        if (mcp != null) {
+            mcp.close();
+        }
+        if (jiraStub != null) {
+            jiraStub.stop(0);
+        }
+    }
+
+    @Test
+    public void initializeEchoesProtocolAndServerInfo() throws Exception {
+        JsonNode r = rpc("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\","
+                + "\"params\":{\"protocolVersion\":\"2024-11-05\"}}").body();
+        assertEquals("2.0", r.path("jsonrpc").asText());
+        assertEquals("2024-11-05", r.path("result").path("protocolVersion").asText());
+        assertEquals("adoct", r.path("result").path("serverInfo").path("name").asText());
+        assertTrue(r.path("result").path("capabilities").has("tools"));
+    }
+
+    @Test
+    public void toolsListExposesAllReadOnlyTools() throws Exception {
+        JsonNode tools = rpc("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}")
+                .body().path("result").path("tools");
+        assertEquals(8, tools.size());
+        String names = tools.toString();
+        assertTrue(names, names.contains("jira_search"));
+        assertTrue(names, names.contains("confluence_get_page"));
+        assertTrue(names, names.contains("confluence_export_tree_to_adoc"));
+    }
+
+    @Test
+    public void toolsCallJiraSearchHitsStub() throws Exception {
+        JsonNode result = rpc("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jira_search\",\"arguments\":{\"jql\":\"project = ABC\"}}}")
+                .body().path("result");
+        assertFalse(result.path("isError").asBoolean());
+        assertTrue(result.path("content").get(0).path("text").asText().contains("ABC-1"));
+    }
+
+    @Test
+    public void toolsCallUnknownToolIsError() throws Exception {
+        JsonNode result = rpc("{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"nope\"}}").body().path("result");
+        assertTrue(result.path("isError").asBoolean());
+    }
+
+    @Test
+    public void notificationGetsNoBody() throws Exception {
+        HttpResponse<String> resp = post("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
+        assertEquals(202, resp.statusCode());
+        assertTrue(resp.body().isEmpty());
+    }
+
+    private record Rpc(JsonNode body) {
+    }
+
+    private Rpc rpc(String json) throws Exception {
+        HttpResponse<String> resp = post(json);
+        assertEquals(200, resp.statusCode());
+        return new Rpc(mapper.readTree(resp.body()));
+    }
+
+    private HttpResponse<String> post(String json) throws Exception {
+        HttpRequest req = HttpRequest.newBuilder(URI.create(mcpUrl))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
+                .build();
+        return http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+}
