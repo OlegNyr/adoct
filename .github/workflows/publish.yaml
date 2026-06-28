@@ -41,7 +41,7 @@ jobs:
           [ -z "$VERSION" ] && VERSION="$PROP_VERSION"
           {
             echo "VERSION=$VERSION"
-            echo "PLUGIN_ID=$(grep -oP '(?<=<id>).*?(?=</id>)' src/main/resources/META-INF/plugin.xml)"
+            echo "PLUGIN_ID=$(grep -oP '(?<=<id>).*?(?=</id>)' adoct-idea/src/main/resources/META-INF/plugin.xml)"
             echo "SINCE_BUILD=$(grep -E '^pluginSinceBuild' gradle.properties | cut -d= -f2 | xargs)"
             echo "UNTIL_BUILD=$(grep -E '^pluginUntilBuild' gradle.properties | cut -d= -f2 | xargs)"
             echo "PAGES_BASE=https://olegnyr.github.io/adoct"
@@ -49,11 +49,12 @@ jobs:
 
       - name: Build plugin
         # sh gradlew — не зависит от флага исполняемости при checkout.
-        run: sh gradlew buildPlugin -Drelease=true --no-daemon --stacktrace
+        # buildPlugin — задача модуля плагина (:adoct-idea), указываем явно.
+        run: sh gradlew :adoct-idea:buildPlugin -Drelease=true --no-daemon --stacktrace
 
       - name: Locate distribution
         run: |
-          ZIP="$(ls build/distributions/*.zip | head -n1)"
+          ZIP="$(ls adoct-idea/build/distributions/*.zip | head -n1)"
           echo "ZIP_PATH=$ZIP" >> "$GITHUB_ENV"
           echo "ZIP_NAME=$(basename "$ZIP")" >> "$GITHUB_ENV"
 
