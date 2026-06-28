@@ -66,6 +66,19 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
 
 **Prompt:** `product_owner` — персона PO с навыками senior Java.
 
+### Страница в AsciiDoc (`confluence_get_page`)
+
+Помимо storage-тела, `confluence_get_page` умеет отдавать страницу сразу в AsciiDoc:
+
+- `format=adoc` — конвертирует страницу нашим движком и кладёт текст в поле `adoc` (по умолчанию `storage`).
+- `fast=true` (только для `adoc`) — быстрый режим для подачи контекста: ссылки резолвятся локально
+  (страницы — из rendered view, вложения — из метаданных; пользователи остаются нерезолвленными), без
+  дополнительных REST-запросов `search`/`user`.
+
+Конвертация полностью in-memory: вложения и картинки не скачиваются, временные файлы не пишутся
+(длинные code/PlantUML-блоки инлайнятся, drawio отдаётся ссылкой `image::…[]`). С `fast=true` весь вызов
+укладывается в один `getMainPage` — удобно «положить» страницу в контекст ассистента.
+
 ## Сравнение с проектами на GitHub
 
 | | **adoct-mcp (наш)** | **sooperset/mcp-atlassian** | **atlassian/atlassian-mcp-server (офиц.)** |
