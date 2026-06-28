@@ -150,6 +150,26 @@ public class ConvertStorageToAdoc {
         return render(metadata, attachment, attachment);
     }
 
+    /**
+     * In-memory конвертация произвольного storage-фрагмента в AsciiDoc без резолва ссылок (ссылки —
+     * локально/плейсхолдером). Для версий страницы и подобных случаев, где нет rendered view.
+     */
+    public String toAdoc(String title) {
+        Path tmp = Path.of(System.getProperty("java.io.tmpdir"));
+        Map<MetadataKey, Object> metadata = new HashMap<>();
+        metadata.put(MetadataKey.LINKS, Map.of());
+        metadata.put(MetadataKey.TITLE, title == null ? "" : title);
+        metadata.put(MetadataKey.IMAGE, "attache");
+        metadata.put(MetadataKey.ATTACH_FOLDER, tmp);
+        metadata.put(MetadataKey.ATTACH_FOLDER_NAME, "attache");
+        metadata.put(MetadataKey.FILES_FOLDER, tmp);
+        metadata.put(MetadataKey.FILES_FOLDER_NAME, "files");
+        metadata.put(MetadataKey.DESTINATION_FOLDER, tmp);
+        metadata.put(MetadataKey.COLOR, Boolean.FALSE);
+        metadata.put(MetadataKey.IN_MEMORY, Boolean.TRUE);
+        return toAdoc(metadata, tmp);
+    }
+
     private String render(Map<MetadataKey, Object> metadata, Path attachment, Path imagesDir) {
         boolean isColor = (Boolean) metadata.getOrDefault(MetadataKey.COLOR, Boolean.FALSE);
         Elements bodyChildren = document.getElementsByTag("body").getFirst().children();

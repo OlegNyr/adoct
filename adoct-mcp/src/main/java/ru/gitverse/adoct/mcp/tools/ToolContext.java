@@ -8,6 +8,7 @@ import ru.gitverse.adoct.jira.JiraClient;
 import ru.gitverse.adoct.mcp.AtlassianEndpoint;
 import ru.gitverse.adoct.mcp.EndpointSupplier;
 import ru.gitverse.adoct.mcp.ToolResult;
+import ru.gitverse.adoct.parser.ConvertStorageToAdoc;
 import ru.gitverse.adoct.parser.DispatcherPage;
 import ru.gitverse.adoct.parser.confluence.ConfluenceClient;
 import ru.gitverse.adoct.parser.confluence.ContentPage;
@@ -138,6 +139,11 @@ public final class ToolContext {
     public String pageToAdoc(ConfluenceClient client, String pageId, ContentPage page, boolean fast) {
         return new DispatcherPage(client, Path.of(System.getProperty("java.io.tmpdir")), mapper)
                 .toAdoc(pageId, page, fast);
+    }
+
+    /** Конвертирует произвольный storage-фрагмент (например тело версии) в AsciiDoc, in-memory. */
+    public String storageToAdoc(String storage, String title) {
+        return new ConvertStorageToAdoc(storage, "").toAdoc(title);
     }
 
     // ---- результат ----

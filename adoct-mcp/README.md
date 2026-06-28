@@ -79,6 +79,8 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
 (длинные code/PlantUML-блоки инлайнятся, drawio отдаётся ссылкой `image::…[]`). С `fast=true` весь вызов
 укладывается в один `getMainPage` — удобно «положить» страницу в контекст ассистента.
 
+`confluence_get_page_diff` тоже принимает `format=adoc` — тела сравниваемых версий возвращаются в AsciiDoc.
+
 ## Сравнение с проектами на GitHub
 
 | | **adoct-mcp (наш)** | **sooperset/mcp-atlassian** | **atlassian/atlassian-mcp-server (офиц.)** |
