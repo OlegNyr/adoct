@@ -24,6 +24,7 @@ import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceReplyToComment;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceSearch;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceUploadAttachment;
 import ru.gitverse.adoct.mcp.tools.jira.JiraAddComment;
+import ru.gitverse.adoct.mcp.tools.jira.JiraAssignIssue;
 import ru.gitverse.adoct.mcp.tools.jira.JiraAddIssuesToSprint;
 import ru.gitverse.adoct.mcp.tools.jira.JiraAddWatcher;
 import ru.gitverse.adoct.mcp.tools.jira.JiraAddWorklog;
@@ -42,15 +43,20 @@ import ru.gitverse.adoct.mcp.tools.jira.JiraGetCurrentUser;
 import ru.gitverse.adoct.mcp.tools.jira.JiraGetIssue;
 import ru.gitverse.adoct.mcp.tools.jira.JiraGetLinkTypes;
 import ru.gitverse.adoct.mcp.tools.jira.JiraGetProjectComponents;
+import ru.gitverse.adoct.mcp.tools.jira.JiraGetProjectStatuses;
 import ru.gitverse.adoct.mcp.tools.jira.JiraGetProjectVersions;
+import ru.gitverse.adoct.mcp.tools.jira.JiraGetWorkflow;
 import ru.gitverse.adoct.mcp.tools.jira.JiraGetSprintIssues;
 import ru.gitverse.adoct.mcp.tools.jira.JiraGetTransitions;
 import ru.gitverse.adoct.mcp.tools.jira.JiraGetWatchers;
 import ru.gitverse.adoct.mcp.tools.jira.JiraGetWorklog;
 import ru.gitverse.adoct.mcp.tools.jira.JiraLinkToEpic;
+import ru.gitverse.adoct.mcp.tools.jira.JiraListAssignableUsers;
 import ru.gitverse.adoct.mcp.tools.jira.JiraListBoards;
 import ru.gitverse.adoct.mcp.tools.jira.JiraListProjects;
 import ru.gitverse.adoct.mcp.tools.jira.JiraListSprints;
+import ru.gitverse.adoct.mcp.tools.jira.JiraListTeam;
+import ru.gitverse.adoct.mcp.tools.jira.JiraListTemplates;
 import ru.gitverse.adoct.mcp.tools.jira.JiraRemoveIssueLink;
 import ru.gitverse.adoct.mcp.tools.jira.JiraRemoveWatcher;
 import ru.gitverse.adoct.mcp.tools.jira.JiraSearch;
@@ -113,6 +119,13 @@ public final class ToolRegistry {
                 new JiraGetChangelog(),
                 new JiraGetAttachments(),
                 new JiraDownloadAttachments(),
+                // ---- Jira: команда / шаблоны / workflow ----
+                new JiraListTeam(),
+                new JiraListAssignableUsers(),
+                new JiraListTemplates(),
+                new JiraGetWorkflow(),
+                new JiraGetProjectStatuses(),
+                new JiraAssignIssue(),
                 // ---- Confluence ----
                 new ConfluenceGetPage(),
                 new ConfluenceSearch(),

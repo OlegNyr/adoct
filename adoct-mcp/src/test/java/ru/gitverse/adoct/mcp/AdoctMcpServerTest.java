@@ -56,6 +56,16 @@ public class AdoctMcpServerTest {
             public java.util.Optional<String> defaultJiraProject() {
                 return java.util.Optional.of("DEF");
             }
+
+            @Override
+            public List<ru.gitverse.adoct.mcp.TeamMember> team() {
+                return List.of(new ru.gitverse.adoct.mcp.TeamMember("jdoe", "John Doe", "Backend"));
+            }
+
+            @Override
+            public List<ru.gitverse.adoct.mcp.Template> templates() {
+                return List.of(new ru.gitverse.adoct.mcp.Template("story", "As a … I want … so that …"));
+            }
         };
         mcp = new AdoctMcpServer(supplier, "adoct", "test");
         mcp.start("127.0.0.1", 0);
@@ -86,8 +96,14 @@ public class AdoctMcpServerTest {
     public void toolsListExposesAllTools() throws Exception {
         JsonNode tools = rpc("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}")
                 .body().path("result").path("tools");
-        assertEquals(56, tools.size());
+        assertEquals(62, tools.size());
         String names = tools.toString();
+        assertTrue(names, names.contains("jira_list_team"));
+        assertTrue(names, names.contains("jira_list_templates"));
+        assertTrue(names, names.contains("jira_get_workflow"));
+        assertTrue(names, names.contains("jira_assign_issue"));
+        assertTrue(names, names.contains("jira_get_project_statuses"));
+        assertTrue(names, names.contains("jira_list_assignable_users"));
         assertTrue(names, names.contains("jira_search"));
         assertTrue(names, names.contains("jira_transition_issue"));
         assertTrue(names, names.contains("jira_list_sprints"));
@@ -123,6 +139,18 @@ public class AdoctMcpServerTest {
                 + "{\"issueType\":\"Task\",\"summary\":\"hi\"}}}").body().path("result");
         assertFalse(result.path("isError").asBoolean());
         assertTrue(lastJiraBody.get(), lastJiraBody.get().contains("\"key\":\"DEF\""));
+    }
+
+    @Test
+    public void jiraListTeamAndTemplatesRoundTrip() throws Exception {
+        JsonNode team = rpc("{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jira_list_team\"}}").body().path("result");
+        assertFalse(team.path("isError").asBoolean());
+        assertTrue(team.path("content").get(0).path("text").asText().contains("jdoe"));
+
+        JsonNode templates = rpc("{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"jira_list_templates\"}}").body().path("result");
+        assertTrue(templates.path("content").get(0).path("text").asText().contains("story"));
     }
 
     @Test

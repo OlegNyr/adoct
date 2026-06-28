@@ -234,6 +234,32 @@ public final class JiraClient {
                 "получить компоненты проекта " + projectKey);
     }
 
+    /** Статусы по типам задач проекта: {@code GET /rest/api/2/project/{key}/statuses}. */
+    public JsonNode getProjectStatuses(String projectKey) throws IOException, InterruptedException {
+        return getJson("/rest/api/2/project/" + projectKey + "/statuses",
+                "получить статусы проекта " + projectKey);
+    }
+
+    /** Пользователи, на которых можно назначать задачи проекта: {@code GET /rest/api/2/user/assignable/search}. */
+    public JsonNode assignableUsers(String projectKey, String query, int maxResults)
+            throws IOException, InterruptedException {
+        int limit = maxResults <= 0 ? 50 : Math.min(maxResults, 100);
+        String path = "/rest/api/2/user/assignable/search?project="
+                + URLEncoder.encode(projectKey, StandardCharsets.UTF_8) + "&maxResults=" + limit;
+        if (query != null && !query.isBlank()) {
+            path += "&query=" + URLEncoder.encode(query.trim(), StandardCharsets.UTF_8);
+        }
+        return getJson(path, "получить assignable-пользователей проекта " + projectKey);
+    }
+
+    /** Назначает исполнителя задаче: {@code PUT /rest/api/2/issue/{key}/assignee} body {@code {"name":...}} (204). */
+    public void assignIssue(String issueKey, String username) throws IOException, InterruptedException {
+        ObjectNode payload = mapper.createObjectNode();
+        payload.put("name", username);
+        sendNoContent("PUT", "/rest/api/2/issue/" + issueKey + "/assignee", payload,
+                "назначить исполнителя задаче " + issueKey);
+    }
+
     // ---- спринты (write) ----
 
     /** Создаёт спринт: {@code POST /rest/agile/1.0/sprint} (payload с name/originBoardId). */

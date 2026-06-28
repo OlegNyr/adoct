@@ -199,4 +199,38 @@ public class JiraClientTest {
         assertEquals("DELETE", lastMethod.get());
         assertEquals("/rest/api/2/issue/ABC-1/watchers?username=john+doe", lastUri.get());
     }
+
+    @Test
+    public void assignIssuePutsName() throws Exception {
+        responseStatus = 204;
+        client.assignIssue("ABC-1", "john");
+        assertEquals("PUT", lastMethod.get());
+        assertEquals("/rest/api/2/issue/ABC-1/assignee", lastUri.get());
+        assertTrue(lastBody.get(), lastBody.get().contains("\"name\":\"john\""));
+    }
+
+    @Test
+    public void getProjectStatusesReads() throws Exception {
+        responseBody = "[]";
+        client.getProjectStatuses("ABC");
+        assertEquals("GET", lastMethod.get());
+        assertEquals("/rest/api/2/project/ABC/statuses", lastUri.get());
+    }
+
+    @Test
+    public void assignableUsersBuildsQuery() throws Exception {
+        responseBody = "[]";
+        client.assignableUsers("ABC", "jo hn", 500);
+        String uri = lastUri.get();
+        assertTrue(uri, uri.startsWith("/rest/api/2/user/assignable/search?project=ABC"));
+        assertTrue(uri, uri.contains("&maxResults=100"));   // 500 зажат до 100
+        assertTrue(uri, uri.contains("&query=jo+hn"));
+    }
+
+    @Test
+    public void assignableUsersOmitsBlankQuery() throws Exception {
+        responseBody = "[]";
+        client.assignableUsers("ABC", null, 0);
+        assertEquals("/rest/api/2/user/assignable/search?project=ABC&maxResults=50", lastUri.get());
+    }
 }

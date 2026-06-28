@@ -22,6 +22,21 @@ public interface EndpointSupplier {
         return Optional.empty();
     }
 
+    /** Ростер команды (для привязки задач к людям). */
+    default List<TeamMember> team() {
+        return List.of();
+    }
+
+    /** Шаблоны задач (свободный текст; интерпретирует LLM). */
+    default List<Template> templates() {
+        return List.of();
+    }
+
+    /** Диаграмма состояний задач в формате PlantUML (как есть, для LLM). */
+    default String workflowDiagram() {
+        return "";
+    }
+
     /** Точка по умолчанию — первая сконфигурированная (если есть). */
     default Optional<AtlassianEndpoint> defaultEndpoint() {
         return all().stream().findFirst();

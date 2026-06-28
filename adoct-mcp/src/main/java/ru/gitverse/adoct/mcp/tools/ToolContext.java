@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import ru.gitverse.adoct.jira.JiraClient;
 import ru.gitverse.adoct.mcp.AtlassianEndpoint;
 import ru.gitverse.adoct.mcp.EndpointSupplier;
+import ru.gitverse.adoct.mcp.TeamMember;
+import ru.gitverse.adoct.mcp.Template;
 import ru.gitverse.adoct.mcp.ToolResult;
 import ru.gitverse.adoct.parser.ConvertStorageToAdoc;
 import ru.gitverse.adoct.parser.DispatcherPage;
@@ -85,6 +87,21 @@ public final class ToolContext {
     /** Дефолтное пространство Confluence из настроек (если задано). */
     public Optional<String> defaultConfluenceSpace() {
         return endpoints.defaultConfluenceSpace();
+    }
+
+    /** Ростер команды из настроек. */
+    public List<TeamMember> team() {
+        return endpoints.team();
+    }
+
+    /** Шаблоны задач из настроек. */
+    public List<Template> templates() {
+        return endpoints.templates();
+    }
+
+    /** PlantUML-диаграмма состояний задач из настроек. */
+    public String workflowDiagram() {
+        return endpoints.workflowDiagram();
     }
 
     /** Проект Jira: из аргумента {@code projectKey} или дефолтный; ошибка, если ни того ни другого. */

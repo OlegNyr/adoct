@@ -35,7 +35,7 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
   `AppLifecycleListener`, off-EDT; перезапуск из настроек.
 - Аутентификация Atlassian — **PAT** (`Authorization: Bearer`), цель — **Server/Data Center**.
 
-## Каталог тулов (56) + промпт
+## Каталог тулов (62) + промпт
 
 **Jira — задачи:** `jira_get_issue`, `jira_search` (JQL), `jira_get_transitions`,
 `jira_create_issue`, `jira_update_issue`, `jira_transition_issue`, `jira_delete_issue`,
@@ -52,6 +52,9 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
 **Jira — проект / метаданные / вложения:** `jira_list_projects`, `jira_get_current_user`,
 `jira_get_project_versions`, `jira_create_version`, `jira_get_project_components`,
 `jira_search_fields`, `jira_get_attachments`, `jira_download_attachments`.
+
+**Jira — команда / шаблоны / workflow:** `jira_list_team`, `jira_list_assignable_users`,
+`jira_assign_issue`, `jira_list_templates`, `jira_get_workflow`, `jira_get_project_statuses`.
 
 **Confluence — чтение:** `confluence_get_page`, `confluence_search` (CQL), `confluence_find_page`,
 `confluence_get_child_pages`, `confluence_get_user`, `confluence_get_page_history`,
@@ -81,6 +84,14 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
 
 `confluence_get_page_diff` тоже принимает `format=adoc` — тела сравниваемых версий возвращаются в AsciiDoc.
 
+### Командное управление
+
+В настройках (Settings → Tools → AsciiDocTools MCP) задаются: **ростер команды** (таблица username/имя/роль →
+`jira_list_team`; живой список — `jira_list_assignable_users`), **шаблоны задач** (имя + *свободный текст* →
+`jira_list_templates`; вызов `jira_create_issue` модель собирает сама по тексту шаблона) и **состояния задач**
+(диаграмма *PlantUML state* → `jira_get_workflow`; живые статусы — `jira_get_project_statuses`). Назначение —
+`jira_assign_issue`. Изменения настроек перезапускают сервер и сразу видны тулам.
+
 ## Сравнение с проектами на GitHub
 
 | | **adoct-mcp (наш)** | **sooperset/mcp-atlassian** | **atlassian/atlassian-mcp-server (офиц.)** |
@@ -89,7 +100,7 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
 | Транспорт | HTTP (свой JSON-RPC, без SDK) | STDIO / SSE / HTTP | Remote HTTP (SSE) |
 | Цель | **Server/Data Center** | Cloud **и** Server/DC | Только **Cloud** |
 | Аутентификация | PAT (из настроек IDE) | PAT / Basic / OAuth | OAuth 2.1 |
-| Кол-во тулов | **56** (35 Jira + 21 Confluence) | **~72** (52 Jira + 20 Confluence) | много (Jira/Confluence/JSM/Bitbucket/Compass) |
+| Кол-во тулов | **62** (41 Jira + 21 Confluence) | **~72** (52 Jira + 20 Confluence) | много (Jira/Confluence/JSM/Bitbucket/Compass) |
 | Продукты | Jira + Confluence | Jira + Confluence | + JSM, Bitbucket, Compass |
 | Экспорт/публикация AsciiDoc | ✅ **уникально** | ❌ | ❌ |
 | Персона-промпт | ✅ `product_owner` | ❌ | ❌ |
