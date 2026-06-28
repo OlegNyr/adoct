@@ -63,6 +63,34 @@ public class DispatcherPage {
         return export(id, basePath, progressCallback);
     }
 
+    /**
+     * Конвертирует одну страницу в AsciiDoc и возвращает строкой — полностью в памяти, без записи
+     * файлов (дочерние страницы и вложения не выгружаются; ссылки резолвятся как при экспорте).
+     */
+    @SneakyThrows
+    public String toAdoc(String id) {
+        ContentPage mainPage = client.getMainPage(id);
+        ConvertStorageToAdoc converter = new ConvertStorageToAdoc(mainPage.content(), mainPage.view());
+        Map<String, String> resolveView = converter.resolveLink();
+        Set<LinksValue> links = converter.getLinks();
+        Map<LinksValue, LinkResult> linksResolvers =
+                getLinks(Map.of(), links, resolveView, mainPage.attachment(), null);
+
+        Path tmp = Path.of(System.getProperty("java.io.tmpdir"));
+        Map<MetadataKey, Object> metadata = new HashMap<>();
+        metadata.put(MetadataKey.LINKS, linksResolvers);
+        metadata.put(MetadataKey.TITLE, mainPage.title());
+        metadata.put(MetadataKey.PAGE_ID, id);
+        metadata.put(MetadataKey.ATTACH_FOLDER, tmp);
+        metadata.put(MetadataKey.ATTACH_FOLDER_NAME, "attache");
+        metadata.put(MetadataKey.IMAGE, "attache");
+        metadata.put(MetadataKey.DESTINATION_FOLDER, tmp);
+        metadata.put(MetadataKey.FILES_FOLDER, tmp);
+        metadata.put(MetadataKey.FILES_FOLDER_NAME, "files");
+        metadata.put(MetadataKey.COLOR, exportColors);
+        return converter.toAdoc(metadata, tmp);
+    }
+
     @SneakyThrows
     private String export(String id, Path baseDir, ProgressCallback progressCallback) {
         progressCallback.next("Загрузка основной страницы", 0.2D);

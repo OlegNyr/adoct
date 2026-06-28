@@ -56,6 +56,14 @@ public class ConvertStorageToAdoc {
         this.destination = destination;
     }
 
+    /** Конструктор для конвертации в память (без записи файлов): {@link #toAdoc(Map, Path)}. */
+    public ConvertStorageToAdoc(String content, String view) {
+        this.content = content;
+        this.document = Jsoup.parse(content, UTF_8.name());
+        this.view = view;
+        this.destination = null;
+    }
+
     @SneakyThrows
     public Set<String> getColors() {
         Elements elementsByTag = document.getAllElements();
@@ -122,18 +130,7 @@ public class ConvertStorageToAdoc {
     @SneakyThrows
     public void convert(Map<MetadataKey, Object> metadata, Path attachment) {
         Path index = destination.resolve("index.adoc");
-        boolean isColor = (Boolean) metadata.getOrDefault(MetadataKey.COLOR, Boolean.FALSE);
-
-        Elements bodyChildren = document.getElementsByTag("body").getFirst().children();
-        AstBuilder astBuilder = new AstBuilder(attachment,
-                destination.resolve((String) metadata.get(MetadataKey.IMAGE)));
-        List<Block> blocks = astBuilder.build(bodyChildren, metadata, isColor);
-        String body = new AsciiDocWriter().write(blocks);
-
-        Object pageId = metadata.get(MetadataKey.PAGE_ID);
-        String idLine = pageId == null ? "" : ":confluency-id: %s\n".formatted(pageId);
-        String res = "= %s\n%s:toc: macro\n:imagesdir: ./%s\n\n%s\n".formatted(
-                metadata.get(MetadataKey.TITLE), idLine, metadata.get(MetadataKey.IMAGE), body);
+        String res = render(metadata, attachment, destination.resolve((String) metadata.get(MetadataKey.IMAGE)));
 
         if (printToStdout) {
             System.out.print(res);
@@ -143,5 +140,25 @@ public class ConvertStorageToAdoc {
         } else {
             SpliteratorAdoc.saveSplit(destination, "index.adoc", res, "==", metadata);
         }
+    }
+
+    /**
+     * Конвертирует страницу в AsciiDoc и возвращает документ строкой, без записи файлов и без
+     * splitting (для in-memory сценариев). Путь {@code attachment} используется как папка картинок.
+     */
+    public String toAdoc(Map<MetadataKey, Object> metadata, Path attachment) {
+        return render(metadata, attachment, attachment);
+    }
+
+    private String render(Map<MetadataKey, Object> metadata, Path attachment, Path imagesDir) {
+        boolean isColor = (Boolean) metadata.getOrDefault(MetadataKey.COLOR, Boolean.FALSE);
+        Elements bodyChildren = document.getElementsByTag("body").getFirst().children();
+        List<Block> blocks = new AstBuilder(attachment, imagesDir).build(bodyChildren, metadata, isColor);
+        String body = new AsciiDocWriter().write(blocks);
+
+        Object pageId = metadata.get(MetadataKey.PAGE_ID);
+        String idLine = pageId == null ? "" : ":confluency-id: %s\n".formatted(pageId);
+        return "= %s\n%s:toc: macro\n:imagesdir: ./%s\n\n%s\n".formatted(
+                metadata.get(MetadataKey.TITLE), idLine, metadata.get(MetadataKey.IMAGE), body);
     }
 }

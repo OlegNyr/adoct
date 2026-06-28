@@ -11,6 +11,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeNotNull;
@@ -54,6 +55,25 @@ public class McpLiveIT {
             String text = result.path("content").get(0).path("text").asText();
             assertTrue("ожидали поле title в ответе: " + text, text.contains("\"title\""));
             System.out.println("MCP confluence_get_page OK -> " + text.substring(0, Math.min(200, text.length())));
+
+            // format=adoc — страница конвертируется движком в AsciiDoc
+            String adocBody = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
+                    + "\"params\":{\"name\":\"confluence_get_page\",\"arguments\":{\"pageId\":\"" + pageId
+                    + "\",\"format\":\"adoc\"}}}";
+            HttpRequest adocReq = HttpRequest.newBuilder(URI.create(url))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(adocBody, StandardCharsets.UTF_8))
+                    .build();
+            JsonNode adocResult = mapper.readTree(
+                    http.send(adocReq, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)).body())
+                    .path("result");
+            assertFalse("adoc tool error: " + adocResult, adocResult.path("isError").asBoolean());
+            JsonNode payload = mapper.readTree(adocResult.path("content").get(0).path("text").asText());
+            assertEquals("adoc", payload.path("format").asText());
+            String adoc = payload.path("adoc").asText();
+            assertTrue("ожидали заголовок AsciiDoc: " + adoc, adoc.startsWith("= "));
+            System.out.println("MCP confluence_get_page format=adoc OK -> "
+                    + adoc.substring(0, Math.min(160, adoc.length())).replace("\n", " | "));
         }
     }
 }

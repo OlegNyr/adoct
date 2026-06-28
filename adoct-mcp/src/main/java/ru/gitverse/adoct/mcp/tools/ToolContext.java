@@ -8,12 +8,14 @@ import ru.gitverse.adoct.jira.JiraClient;
 import ru.gitverse.adoct.mcp.AtlassianEndpoint;
 import ru.gitverse.adoct.mcp.EndpointSupplier;
 import ru.gitverse.adoct.mcp.ToolResult;
+import ru.gitverse.adoct.parser.DispatcherPage;
 import ru.gitverse.adoct.parser.confluence.ConfluenceClient;
 import ru.gitverse.adoct.parser.confluence.ObjectMapperExt;
 
 import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -125,6 +127,14 @@ public final class ToolContext {
                     .orElseThrow(() -> new IllegalArgumentException("Страница не найдена: " + url));
         }
         throw new IllegalArgumentException("Не удалось извлечь pageId из url: " + url);
+    }
+
+    /**
+     * Конвертирует одну страницу Confluence в AsciiDoc нашим движком и возвращает текст — полностью
+     * в памяти, без записи файлов (дочерние страницы и вложения не выгружаются).
+     */
+    public String pageToAdoc(ConfluenceClient client, String pageId) {
+        return new DispatcherPage(client, Path.of(System.getProperty("java.io.tmpdir")), mapper).toAdoc(pageId);
     }
 
     // ---- результат ----
