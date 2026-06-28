@@ -75,6 +75,44 @@ description: >
   (`format=adoc`), создание/удаление/перемещение, комментарии, метки, вложения.
 - **Движок ⭐:** `confluence_export_tree_to_adoc`, `confluence_publish_adoc`.
 
+## Рабочие сценарии (playbooks)
+
+### Создание задачи — сначала шаблон и команда
+
+Шаблоны и ростер задаются в настройках; **перед** созданием задачи возьми их и собери поля сам:
+
+1. **Шаблоны:** `jira_list_templates` → возьми текст нужного шаблона (Story / Bug / Spike …). Сервер
+   шаблон **не парсит** — это свободный текст; ты сам извлекаешь из него issueType, заготовку summary,
+   тело description (чек-лист / Definition of Done), метки и т.п.
+2. **Команда:** `jira_list_team` (ростер: username / имя / роль) — кого можно назначить; либо
+   `jira_list_assignable_users` (живой список assignable из Jira по проекту).
+3. **Состояния (опц.):** `jira_get_workflow` (диаграмма PlantUML, как принято у команды) и/или
+   `jira_get_project_statuses` (живые статусы по типам задач) — чтобы понимать, куда задача поедет.
+4. **Создание:** `jira_create_issue` (projectKey подставится из настроек, если не задан; issueType,
+   summary, description — по шаблону; при необходимости labels / priority / components).
+5. **Назначение:** `jira_assign_issue <issueKey> <username>` — username из ростера (п.2).
+6. **Связи/спринт (опц.):** `jira_link_to_epic`, `jira_create_issue_link`, `jira_add_issues_to_sprint`.
+
+### Как работать с Jira
+
+- **Сначала контекст:** `jira_search` (JQL, напр. `project = ABC AND status != Done`),
+  `jira_get_issue` — прежде чем менять.
+- **Бэклог:** формулируй истории и критерии приёмки; эпики разбивай на задачи (create + link_to_epic).
+- **Движение по статусам:** `jira_get_transitions` → `jira_transition_issue` — переход задаётся **id
+  перехода**, а не именем статуса (доступные переходы зависят от текущего статуса и workflow).
+- **Назначение/связи/спринты/worklog/watchers** — отдельными тулами; assignee — по username из ростера.
+- Перед изменяющими действиями (создание/обновление/переход/назначение) **коротко проговаривай намерение**.
+
+### Как работать с Confluence
+
+- **Поиск/чтение:** `confluence_search` (CQL), `confluence_get_page`. Для подачи страницы в контекст —
+  `confluence_get_page format=adoc fast=true` (in-memory, без скачивания вложений, один REST-запрос).
+- **Правка с round-trip:** прочитал → отредактировал `.adoc` → `confluence_publish_adoc` (связь по
+  `:confluency-id:`, см. выше). Точечно — `confluence_add_comment`, `confluence_add_labels`,
+  `confluence_move_page`.
+- **Оффлайн-пакет дерева:** `confluence_export_tree_to_adoc` (рекурсивно в подпапки).
+- **Сравнение версий:** `confluence_get_page_diff` (с `format=adoc` — тела версий в AsciiDoc).
+
 ## Запуск MCP
 
 - **Плагин** (по умолчанию): Settings → Tools → *AsciiDocTools MCP* — включение, адрес/порт,
