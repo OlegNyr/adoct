@@ -4,6 +4,15 @@ junit = "4.13.2"
 sshj = "0.39.0"
 slf4j = "2.0.13"
 asciidoctorj = "2.5.13"
+# Раньше приходили транзитивно из IntelliJ Platform; после выноса движка в отдельные
+# java-library-модули объявляем явно. Версии близки к платформенным (2025.1).
+jsoup = "1.17.2"
+jackson = "2.17.2"
+commonsLang3 = "3.14.0"
+commonsIo = "2.16.1"
+httpclient = "4.5.14"
+datafaker = "2.4.2"
+pngj = "2.0.1"
 
 # plugins
 changelog = "2.2.1"
@@ -14,6 +23,13 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 sshj = { group = "com.hierynomus", name = "sshj", version.ref = "sshj" }
 slf4jApi = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
 asciidoctorj = { group = "org.asciidoctor", name = "asciidoctorj", version.ref = "asciidoctorj" }
+jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
+jacksonDatabind = { group = "com.fasterxml.jackson.core", name = "jackson-databind", version.ref = "jackson" }
+commonsLang3 = { group = "org.apache.commons", name = "commons-lang3", version.ref = "commonsLang3" }
+commonsIo = { group = "commons-io", name = "commons-io", version.ref = "commonsIo" }
+httpclient = { group = "org.apache.httpcomponents", name = "httpclient", version.ref = "httpclient" }
+datafaker = { group = "net.datafaker", name = "datafaker", version.ref = "datafaker" }
+pngj = { group = "ar.com.hjg", name = "pngj", version.ref = "pngj" }
 
 [plugins]
 changelog = { id = "org.jetbrains.changelog", version.ref = "changelog" }
