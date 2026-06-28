@@ -4,7 +4,7 @@ name: publish-plugin
 #   1) собирает плагин (-Drelease=true, версия в манифесте без -SNAPSHOT);
 #   2) создаёт GitHub Release с .zip (для людей);
 #   3) публикует .zip + updatePlugins.xml на GitHub Pages (на них смотрит IDE).
-# Pages-домен открыт из банковского контура (gitverse.site закрыт, GitHub — нет).
+# Pages-домен (GitHub) открыт из банковского контура.
 on:
   push:
     tags: ['v*']
