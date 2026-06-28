@@ -18,8 +18,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class McpServerService implements Disposable {
 
     private static final Logger LOG = Logger.getInstance(McpServerService.class);
-    private static final String BIND_HOST = "127.0.0.1";
-    private static final int PORT = 7337;
     private static final String SERVER_NAME = "AsciiDocTools MCP";
     private static final String SERVER_VERSION = "1.0";
 
@@ -30,20 +28,27 @@ public final class McpServerService implements Disposable {
         return ApplicationManager.getApplication().getService(McpServerService.class);
     }
 
-    /** Идемпотентный запуск сервера в фоновом потоке. */
+    /** Идемпотентный запуск сервера в фоновом потоке (если включён в настройках). */
     public void startOnce() {
+        McpSettingsService settings = McpSettingsService.getInstance();
+        if (!settings.isEnabled()) {
+            LOG.info("AsciiDocTools MCP server disabled in settings — not starting");
+            return;
+        }
         if (!started.compareAndSet(false, true)) {
             return;
         }
+        String host = settings.getBindHost();
+        int port = settings.getPort();
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             try {
                 AdoctMcpServer mcp = new AdoctMcpServer(new IdeaEndpointSupplier(), SERVER_NAME, SERVER_VERSION);
-                mcp.start(BIND_HOST, PORT);
+                mcp.start(host, port);
                 server = mcp;
-                LOG.info("AsciiDocTools MCP server started on http://" + BIND_HOST + ":" + PORT + "/mcp");
+                LOG.info("AsciiDocTools MCP server started on http://" + host + ":" + port + "/mcp");
             } catch (Exception e) {
                 started.set(false);
-                LOG.warn("AsciiDocTools MCP server failed to start on port " + PORT, e);
+                LOG.warn("AsciiDocTools MCP server failed to start on " + host + ":" + port, e);
             }
         });
     }

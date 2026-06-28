@@ -33,11 +33,38 @@ public final class AdoctMcpServer implements AutoCloseable {
     private static final String PROTOCOL_VERSION = "2024-11-05";
     private static final byte[] EMPTY = new byte[0];
 
+    /** Промпт-персона: продукт-овнер с навыками senior Java-разработчика. */
+    private static final String PRODUCT_OWNER_PROMPT = """
+            Ты — продукт-овнер с навыками senior Java-разработчика. Ведёшь продукт, проект и команду
+            через Jira и Confluence (Server/Data Center).
+
+            Принципы работы:
+            - Сначала разберись в контексте: ищи задачи (jira_search по JQL) и документацию
+              (confluence_search, confluence_get_page), прежде чем предлагать решения.
+            - Формулируй понятные пользовательские истории и критерии приёмки; разбивай эпики на задачи.
+            - Управляй беклогом и статусами: jira_create_issue, jira_update_issue,
+              jira_get_transitions + jira_transition_issue, jira_add_comment.
+            - Документацию веди в Confluence; для оффлайн-работы выгружай дерево страниц в AsciiDoc
+              (confluence_export_tree_to_adoc) и публикуй правки обратно (confluence_publish_adoc).
+            - Мысли как инженер: учитывай реализуемость, технический долг и риски; давай оценки и
+              приоритеты с обоснованием.
+            - Перед изменяющими действиями (создание/обновление/переход задач, публикация страниц)
+              кратко проговаривай намерение.
+
+            Отвечай по делу, на языке пользователя.""";
+
     private final ObjectMapper mapper = ObjectMapperExt.INSTANT;
     private final String serverName;
     private final String serverVersion;
     private final List<McpTool> tools;
     private final Map<String, McpTool> byName = new LinkedHashMap<>();
+    private final List<Prompt> prompts = List.of(
+            new Prompt("product_owner",
+                    "Персона: продукт-овнер с навыками senior Java-разработчика (управление продуктом/командой).",
+                    PRODUCT_OWNER_PROMPT));
+
+    private record Prompt(String name, String description, String text) {
+    }
 
     private HttpServer httpServer;
 
@@ -149,6 +176,8 @@ public final class AdoctMcpServer implements AutoCloseable {
                 case "ping" -> result(id, mapper.createObjectNode());
                 case "tools/list" -> result(id, toolsList());
                 case "tools/call" -> result(id, toolsCall(message.path("params")));
+                case "prompts/list" -> result(id, promptsList());
+                case "prompts/get" -> result(id, promptsGet(message.path("params")));
                 case "notifications/initialized" -> null;
                 default -> notification ? null : error(id, -32601, "Method not found: " + method);
             };
@@ -161,7 +190,9 @@ public final class AdoctMcpServer implements AutoCloseable {
         ObjectNode r = mapper.createObjectNode();
         String requested = params.path("protocolVersion").asText(null);
         r.put("protocolVersion", requested == null || requested.isBlank() ? PROTOCOL_VERSION : requested);
-        r.putObject("capabilities").putObject("tools");
+        ObjectNode caps = r.putObject("capabilities");
+        caps.putObject("tools");
+        caps.putObject("prompts");
         ObjectNode info = r.putObject("serverInfo");
         info.put("name", serverName);
         info.put("version", serverVersion);
@@ -202,6 +233,35 @@ public final class AdoctMcpServer implements AutoCloseable {
         }
         content.addObject().put("type", "text").put("text", res.text());
         r.put("isError", res.isError());
+        return r;
+    }
+
+    private ObjectNode promptsList() {
+        ObjectNode r = mapper.createObjectNode();
+        ArrayNode arr = r.putArray("prompts");
+        for (Prompt p : prompts) {
+            ObjectNode n = arr.addObject();
+            n.put("name", p.name());
+            n.put("description", p.description());
+        }
+        return r;
+    }
+
+    private ObjectNode promptsGet(JsonNode params) {
+        String name = params.path("name").asText(null);
+        Prompt prompt = prompts.stream()
+                .filter(p -> p.name().equals(name))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Unknown prompt: " + name));
+        ObjectNode r = mapper.createObjectNode();
+        r.put("description", prompt.description());
+        ObjectNode content = mapper.createObjectNode();
+        content.put("type", "text");
+        content.put("text", prompt.text());
+        ObjectNode msg = mapper.createObjectNode();
+        msg.put("role", "user");
+        msg.set("content", content);
+        r.putArray("messages").add(msg);
         return r;
     }
 

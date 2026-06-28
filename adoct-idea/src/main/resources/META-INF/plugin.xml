@@ -26,8 +26,6 @@
         <notificationGroup id="AsciiDocTools.Notifications"
                            displayType="BALLOON"
                            isLogByDefault="true"/>
-        <!-- Встроенный MCP-сервер: app-level сервис управляет его жизненным циклом. -->
-        <applicationService serviceImplementation="ru.gitverse.adoct.plugins.idea.mcp.McpServerService"/>
     </extensions>
 
     <!-- Поднимает встроенный MCP-сервер при запуске IDE. -->

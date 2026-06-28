@@ -97,6 +97,18 @@ public class AdoctMcpServerTest {
     }
 
     @Test
+    public void promptsListAndGetReturnPersona() throws Exception {
+        JsonNode list = rpc("{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"prompts/list\"}")
+                .body().path("result").path("prompts");
+        assertTrue(list.toString(), list.toString().contains("product_owner"));
+
+        JsonNode result = rpc("{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"prompts/get\","
+                + "\"params\":{\"name\":\"product_owner\"}}").body().path("result");
+        String text = result.path("messages").get(0).path("content").path("text").asText();
+        assertTrue(text, text.contains("продукт-овнер"));
+    }
+
+    @Test
     public void notificationGetsNoBody() throws Exception {
         HttpResponse<String> resp = post("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
         assertEquals(202, resp.statusCode());
