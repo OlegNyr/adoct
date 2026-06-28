@@ -10,6 +10,7 @@ import ru.gitverse.adoct.mcp.EndpointSupplier;
 import ru.gitverse.adoct.mcp.ToolResult;
 import ru.gitverse.adoct.parser.DispatcherPage;
 import ru.gitverse.adoct.parser.confluence.ConfluenceClient;
+import ru.gitverse.adoct.parser.confluence.ContentPage;
 import ru.gitverse.adoct.parser.confluence.ObjectMapperExt;
 
 import java.io.IOException;
@@ -130,11 +131,12 @@ public final class ToolContext {
     }
 
     /**
-     * Конвертирует одну страницу Confluence в AsciiDoc нашим движком и возвращает текст — полностью
-     * в памяти, без записи файлов (дочерние страницы и вложения не выгружаются).
+     * Конвертирует уже загруженную страницу Confluence в AsciiDoc нашим движком и возвращает текст —
+     * полностью в памяти, без записи файлов (дочерние страницы и вложения не выгружаются).
      */
-    public String pageToAdoc(ConfluenceClient client, String pageId) {
-        return new DispatcherPage(client, Path.of(System.getProperty("java.io.tmpdir")), mapper).toAdoc(pageId);
+    public String pageToAdoc(ConfluenceClient client, String pageId, ContentPage page) {
+        return new DispatcherPage(client, Path.of(System.getProperty("java.io.tmpdir")), mapper)
+                .toAdoc(pageId, page);
     }
 
     // ---- результат ----

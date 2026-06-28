@@ -69,7 +69,12 @@ public class DispatcherPage {
      */
     @SneakyThrows
     public String toAdoc(String id) {
-        ContentPage mainPage = client.getMainPage(id);
+        return toAdoc(id, client.getMainPage(id));
+    }
+
+    /** Как {@link #toAdoc(String)}, но по уже загруженной странице — без повторного REST-запроса. */
+    @SneakyThrows
+    public String toAdoc(String id, ContentPage mainPage) {
         ConvertStorageToAdoc converter = new ConvertStorageToAdoc(mainPage.content(), mainPage.view());
         Map<String, String> resolveView = converter.resolveLink();
         Set<LinksValue> links = converter.getLinks();

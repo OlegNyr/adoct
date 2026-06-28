@@ -35,7 +35,7 @@ public final class ConfluenceGetPage implements Tool {
             out.put("date", cp.date());
             if ("adoc".equalsIgnoreCase(format)) {
                 out.put("format", "adoc");
-                out.put("adoc", c.pageToAdoc(client, pageId));
+                out.put("adoc", c.pageToAdoc(client, pageId, cp));
             } else {
                 out.put("format", "storage");
                 out.put("storage", cp.content());
