@@ -88,7 +88,8 @@ public final class ConvertDocsUrlToAdoc {
         if (byId.isPresent()) {
             return byId.get();
         }
-        Optional<PublishDocsToConfluence.DisplayRef> ref = PublishDocsToConfluence.extractDisplayRef(url);
+        Optional<ru.gitverse.adoct.generate.AdocPublisher.DisplayRef> ref =
+                ru.gitverse.adoct.generate.AdocPublisher.extractDisplayRef(url);
         if (ref.isPresent()) {
             return client.findPageId(ref.get().spaceKey(), ref.get().title())
                     .orElseThrow(() -> new IllegalArgumentException(

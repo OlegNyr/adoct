@@ -10,6 +10,7 @@ import ru.gitverse.adoct.mcp.EndpointSupplier;
 import ru.gitverse.adoct.mcp.InputSchema;
 import ru.gitverse.adoct.mcp.McpTool;
 import ru.gitverse.adoct.mcp.ToolResult;
+import ru.gitverse.adoct.generate.AdocPublisher;
 import ru.gitverse.adoct.parser.DispatcherPage;
 import ru.gitverse.adoct.parser.confluence.ConfluenceClient;
 import ru.gitverse.adoct.parser.confluence.ContentPage;
@@ -56,7 +57,8 @@ public final class ToolCatalog {
                 confluenceFindPage(),
                 confluenceGetChildPages(),
                 confluenceGetUser(),
-                confluenceExportTreeToAdoc());
+                confluenceExportTreeToAdoc(),
+                confluencePublishAdoc());
     }
 
     // ---- Jira -------------------------------------------------------------
@@ -282,6 +284,31 @@ public final class ToolCatalog {
             out.put("title", title);
             out.put("pageId", pageId);
             out.put("outputDir", String.valueOf(dp.getDestination()));
+            return ToolResult.ok(mapper.writeValueAsString(out));
+        });
+    }
+
+    private McpTool confluencePublishAdoc() {
+        ObjectNode schema = InputSchema.object()
+                .str("source", "Абсолютный путь .adoc файла или папки с .adoc", true)
+                .str("url", "URL целевой страницы (?pageId=… или /display/SPACE/Title); для папки — родительская страница", false)
+                .str("pageId", "ID целевой страницы (альтернатива url)", false)
+                .str("host", "Хост Confluence; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("confluence_publish_adoc",
+                "Опубликовать AsciiDoc (файл или папку) в Confluence: рендер в storage format и заливка "
+                        + "через REST. ИЗМЕНЯЕТ страницы Confluence.", schema, args -> {
+            AtlassianEndpoint ep = endpoint(args);
+            ru.gitverse.adoct.generate.confluence.ConfluenceClient client =
+                    new ru.gitverse.adoct.generate.confluence.ConfluenceClient(ep.host(), ep.token());
+            String url = text(args, "url");
+            if (url == null || url.isBlank()) {
+                String pageId = text(args, "pageId");
+                url = pageId == null || pageId.isBlank() ? "" : "pageId=" + pageId;
+            }
+            String result = new AdocPublisher(client).publish(url, Path.of(reqStr(args, "source")));
+            ObjectNode out = mapper.createObjectNode();
+            out.put("result", result);
             return ToolResult.ok(mapper.writeValueAsString(out));
         });
     }

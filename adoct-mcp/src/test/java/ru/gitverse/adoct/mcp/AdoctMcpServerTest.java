@@ -71,12 +71,13 @@ public class AdoctMcpServerTest {
     public void toolsListExposesAllTools() throws Exception {
         JsonNode tools = rpc("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}")
                 .body().path("result").path("tools");
-        assertEquals(13, tools.size());
+        assertEquals(14, tools.size());
         String names = tools.toString();
         assertTrue(names, names.contains("jira_search"));
         assertTrue(names, names.contains("jira_transition_issue"));
         assertTrue(names, names.contains("confluence_get_page"));
         assertTrue(names, names.contains("confluence_export_tree_to_adoc"));
+        assertTrue(names, names.contains("confluence_publish_adoc"));
     }
 
     @Test

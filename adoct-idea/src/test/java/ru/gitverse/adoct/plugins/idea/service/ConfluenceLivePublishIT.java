@@ -35,7 +35,7 @@ public class ConfluenceLivePublishIT {
         ConfluenceClient client = new ConfluenceClient(base, token);
 
         // 1) наш резолв: из "человеческого" URL без pageId получаем числовой ID
-        Optional<String> pageId = PublishDocsToConfluence.resolvePageId(client, url);
+        Optional<String> pageId = ru.gitverse.adoct.generate.AdocPublisher.resolvePageId(client, url);
         assertTrue("страница из URL не зарезолвилась: " + url, pageId.isPresent());
         System.out.println("resolved pageId=" + pageId.get() + " from " + url);
 
