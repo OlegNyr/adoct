@@ -19,6 +19,7 @@ public final class ConfluenceGetPage implements Tool {
         ObjectNode schema = InputSchema.object()
                 .str("pageId", "ID страницы Confluence", true)
                 .str("format", "storage (по умолчанию) или adoc — отдать страницу в AsciiDoc", false)
+                .bool("fast", "Только для adoc: быстрый режим без доп. REST (ссылки резолвятся локально)", false)
                 .str("host", "Хост Confluence; иначе хост по умолчанию", false)
                 .build();
         return new McpTool("confluence_get_page",
@@ -35,7 +36,7 @@ public final class ConfluenceGetPage implements Tool {
             out.put("date", cp.date());
             if ("adoc".equalsIgnoreCase(format)) {
                 out.put("format", "adoc");
-                out.put("adoc", c.pageToAdoc(client, pageId, cp));
+                out.put("adoc", c.pageToAdoc(client, pageId, cp, c.optBool(args, "fast", false)));
             } else {
                 out.put("format", "storage");
                 out.put("storage", cp.content());

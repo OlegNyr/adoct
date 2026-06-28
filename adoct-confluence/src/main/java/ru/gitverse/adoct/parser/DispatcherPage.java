@@ -73,13 +73,25 @@ public class DispatcherPage {
     }
 
     /** Как {@link #toAdoc(String)}, но по уже загруженной странице — без повторного REST-запроса. */
-    @SneakyThrows
     public String toAdoc(String id, ContentPage mainPage) {
+        return toAdoc(id, mainPage, false);
+    }
+
+    /**
+     * Конвертация одной страницы в AsciiDoc по уже загруженной странице.
+     *
+     * @param fast {@code true} — быстрый режим для подачи контекста: ссылки резолвятся только локально
+     *             (страницы — из rendered view, вложения — из метаданных; пользователи остаются нерезолв.),
+     *             без дополнительных REST-запросов {@code search}/{@code user}. {@code false} — как при экспорте.
+     */
+    @SneakyThrows
+    public String toAdoc(String id, ContentPage mainPage, boolean fast) {
         ConvertStorageToAdoc converter = new ConvertStorageToAdoc(mainPage.content(), mainPage.view());
         Map<String, String> resolveView = converter.resolveLink();
         Set<LinksValue> links = converter.getLinks();
-        Map<LinksValue, LinkResult> linksResolvers =
-                getLinks(Map.of(), links, resolveView, mainPage.attachment(), null);
+        Map<LinksValue, LinkResult> linksResolvers = fast
+                ? resolveLinksLocal(links, resolveView, mainPage.attachment())
+                : getLinks(Map.of(), links, resolveView, mainPage.attachment(), null);
 
         Path tmp = Path.of(System.getProperty("java.io.tmpdir"));
         Map<MetadataKey, Object> metadata = new HashMap<>();
@@ -94,6 +106,35 @@ public class DispatcherPage {
         metadata.put(MetadataKey.FILES_FOLDER_NAME, "files");
         metadata.put(MetadataKey.COLOR, exportColors);
         return converter.toAdoc(metadata, tmp);
+    }
+
+    /** Резолв ссылок без сети: страницы — из rendered view, вложения — из метаданных, пользователи — пропускаются. */
+    private Map<LinksValue, LinkResult> resolveLinksLocal(Set<LinksValue> links, Map<String, String> resolveView,
+                                                          Map<String, LinkResult> attachment) {
+        Map<LinksValue, LinkResult> out = new HashMap<>();
+        for (LinksValue link : links) {
+            switch (link) {
+                case LinksPage page -> {
+                    String url = resolveView.get(page.title());
+                    if (url != null) {
+                        out.put(link, new LinkResult(page.title(), url));
+                    }
+                }
+                case LinksAttachment att -> {
+                    LinkResult res = attachment.get(att.filename());
+                    if (res != null) {
+                        out.put(link, res);
+                    }
+                }
+                case LinksUser ignored -> {
+                    // профиль пользователя требует REST — в fast-режиме оставляем нерезолвленным
+                }
+                default -> {
+                    // другие типы не ожидаются
+                }
+            }
+        }
+        return out;
     }
 
     @SneakyThrows

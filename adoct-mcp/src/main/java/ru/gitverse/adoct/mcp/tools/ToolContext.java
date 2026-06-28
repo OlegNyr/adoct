@@ -132,11 +132,12 @@ public final class ToolContext {
 
     /**
      * Конвертирует уже загруженную страницу Confluence в AsciiDoc нашим движком и возвращает текст —
-     * полностью в памяти, без записи файлов (дочерние страницы и вложения не выгружаются).
+     * полностью в памяти, без записи файлов и без загрузки вложений/картинок. {@code fast=true} —
+     * без доп. REST на резолв ссылок (для подачи контекста): ссылки резолвятся только локально.
      */
-    public String pageToAdoc(ConfluenceClient client, String pageId, ContentPage page) {
+    public String pageToAdoc(ConfluenceClient client, String pageId, ContentPage page, boolean fast) {
         return new DispatcherPage(client, Path.of(System.getProperty("java.io.tmpdir")), mapper)
-                .toAdoc(pageId, page);
+                .toAdoc(pageId, page, fast);
     }
 
     // ---- результат ----
