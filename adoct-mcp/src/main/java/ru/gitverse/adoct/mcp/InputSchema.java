@@ -34,6 +34,10 @@ public final class InputSchema {
         return add(name, "integer", description, req);
     }
 
+    public InputSchema obj(String name, String description, boolean req) {
+        return add(name, "object", description, req);
+    }
+
     private InputSchema add(String name, String type, String description, boolean req) {
         ObjectNode p = properties.putObject(name);
         p.put("type", type);

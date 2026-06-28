@@ -102,6 +102,51 @@ public final class JiraClient {
         return mapper.readTree(response.body()).path("key").asText();
     }
 
+    /** Обновляет задачу payload-ом {@code {"fields": {...}}} / {@code {"update": {...}}} (PUT, ответ 204). */
+    public void updateIssue(String issueKey, JsonNode payload) throws IOException, InterruptedException {
+        HttpRequest request = baseRequest("/rest/api/2/issue/" + issueKey)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload), StandardCharsets.UTF_8))
+                .build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        ensureSuccess(response, "обновить задачу " + issueKey);
+    }
+
+    /** Доступные переходы по workflow для задачи: {@code GET .../transitions} → {@code {transitions:[{id,name,...}]}}. */
+    public JsonNode getTransitions(String issueKey) throws IOException, InterruptedException {
+        HttpRequest request = baseRequest("/rest/api/2/issue/" + issueKey + "/transitions")
+                .GET()
+                .build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        ensureSuccess(response, "получить переходы задачи " + issueKey);
+        return mapper.readTree(response.body());
+    }
+
+    /** Переводит задачу по переходу {@code transitionId} (POST {@code .../transitions}, ответ 204). */
+    public void transitionIssue(String issueKey, String transitionId) throws IOException, InterruptedException {
+        ObjectNode payload = mapper.createObjectNode();
+        payload.putObject("transition").put("id", transitionId);
+        HttpRequest request = baseRequest("/rest/api/2/issue/" + issueKey + "/transitions")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload), StandardCharsets.UTF_8))
+                .build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        ensureSuccess(response, "перевести задачу " + issueKey);
+    }
+
+    /** Добавляет комментарий к задаче ({@code POST .../comment}); возвращает JSON созданного комментария. */
+    public JsonNode addComment(String issueKey, String body) throws IOException, InterruptedException {
+        ObjectNode payload = mapper.createObjectNode();
+        payload.put("body", body);
+        HttpRequest request = baseRequest("/rest/api/2/issue/" + issueKey + "/comment")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload), StandardCharsets.UTF_8))
+                .build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        ensureSuccess(response, "добавить комментарий к задаче " + issueKey);
+        return mapper.readTree(response.body());
+    }
+
     private HttpRequest.Builder baseRequest(String path) {
         return HttpRequest.newBuilder(URI.create(baseUrl + path))
                 .header("Authorization", "Bearer " + token);

@@ -46,6 +46,11 @@ public final class ToolCatalog {
         return List.of(
                 jiraGetIssue(),
                 jiraSearch(),
+                jiraGetTransitions(),
+                jiraCreateIssue(),
+                jiraUpdateIssue(),
+                jiraTransitionIssue(),
+                jiraAddComment(),
                 confluenceGetPage(),
                 confluenceSearch(),
                 confluenceFindPage(),
@@ -63,9 +68,7 @@ public final class ToolCatalog {
                 .str("host", "Хост Jira (если настроено несколько); иначе хост по умолчанию", false)
                 .build();
         return new McpTool("jira_get_issue", "Прочитать задачу Jira по ключу.", schema, args -> {
-            AtlassianEndpoint ep = endpoint(args);
-            JiraClient jira = new JiraClient(ep.host(), ep.token());
-            JsonNode issue = jira.getIssue(reqStr(args, "issueKey"), text(args, "fields"));
+            JsonNode issue = jira(args).getIssue(reqStr(args, "issueKey"), text(args, "fields"));
             return ToolResult.ok(mapper.writeValueAsString(issue));
         });
     }
@@ -77,10 +80,96 @@ public final class ToolCatalog {
                 .str("host", "Хост Jira; иначе хост по умолчанию", false)
                 .build();
         return new McpTool("jira_search", "Найти задачи Jira по JQL.", schema, args -> {
-            AtlassianEndpoint ep = endpoint(args);
-            JiraClient jira = new JiraClient(ep.host(), ep.token());
-            JsonNode result = jira.searchJql(reqStr(args, "jql"), optInt(args, "maxResults", 50));
+            JsonNode result = jira(args).searchJql(reqStr(args, "jql"), optInt(args, "maxResults", 50));
             return ToolResult.ok(mapper.writeValueAsString(result));
+        });
+    }
+
+    private McpTool jiraGetTransitions() {
+        ObjectNode schema = InputSchema.object()
+                .str("issueKey", "Ключ задачи", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_get_transitions",
+                "Доступные переходы по workflow для задачи (id и название).", schema, args -> {
+            JsonNode t = jira(args).getTransitions(reqStr(args, "issueKey"));
+            return ToolResult.ok(mapper.writeValueAsString(t));
+        });
+    }
+
+    private McpTool jiraCreateIssue() {
+        ObjectNode schema = InputSchema.object()
+                .str("projectKey", "Ключ проекта", true)
+                .str("issueType", "Тип задачи (например Task, Story, Bug)", true)
+                .str("summary", "Заголовок", true)
+                .str("description", "Описание (необязательно)", false)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_create_issue", "Создать задачу Jira.", schema, args -> {
+            ObjectNode payload = mapper.createObjectNode();
+            ObjectNode fields = payload.putObject("fields");
+            fields.putObject("project").put("key", reqStr(args, "projectKey"));
+            fields.putObject("issuetype").put("name", reqStr(args, "issueType"));
+            fields.put("summary", reqStr(args, "summary"));
+            String description = text(args, "description");
+            if (description != null && !description.isBlank()) {
+                fields.put("description", description);
+            }
+            String key = jira(args).createIssue(payload);
+            ObjectNode out = mapper.createObjectNode();
+            out.put("key", key);
+            return ToolResult.ok(mapper.writeValueAsString(out));
+        });
+    }
+
+    private McpTool jiraUpdateIssue() {
+        ObjectNode schema = InputSchema.object()
+                .str("issueKey", "Ключ задачи", true)
+                .obj("fields", "Объект полей Jira для обновления (например {\"summary\":\"…\"})", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_update_issue", "Обновить поля задачи Jira.", schema, args -> {
+            JsonNode fields = args.get("fields");
+            if (fields == null || !fields.isObject()) {
+                throw new IllegalArgumentException("Параметр fields должен быть объектом");
+            }
+            ObjectNode payload = mapper.createObjectNode();
+            payload.set("fields", fields);
+            String issueKey = reqStr(args, "issueKey");
+            jira(args).updateIssue(issueKey, payload);
+            ObjectNode out = mapper.createObjectNode();
+            out.put("updated", issueKey);
+            return ToolResult.ok(mapper.writeValueAsString(out));
+        });
+    }
+
+    private McpTool jiraTransitionIssue() {
+        ObjectNode schema = InputSchema.object()
+                .str("issueKey", "Ключ задачи", true)
+                .str("transitionId", "ID перехода (см. jira_get_transitions)", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_transition_issue",
+                "Перевести задачу Jira по переходу workflow.", schema, args -> {
+            String issueKey = reqStr(args, "issueKey");
+            String transitionId = reqStr(args, "transitionId");
+            jira(args).transitionIssue(issueKey, transitionId);
+            ObjectNode out = mapper.createObjectNode();
+            out.put("transitioned", issueKey);
+            out.put("transitionId", transitionId);
+            return ToolResult.ok(mapper.writeValueAsString(out));
+        });
+    }
+
+    private McpTool jiraAddComment() {
+        ObjectNode schema = InputSchema.object()
+                .str("issueKey", "Ключ задачи", true)
+                .str("body", "Текст комментария", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_add_comment", "Добавить комментарий к задаче Jira.", schema, args -> {
+            JsonNode comment = jira(args).addComment(reqStr(args, "issueKey"), reqStr(args, "body"));
+            return ToolResult.ok(mapper.writeValueAsString(comment));
         });
     }
 
@@ -210,6 +299,11 @@ public final class ToolCatalog {
     private ConfluenceClient confluence(JsonNode args) {
         AtlassianEndpoint ep = endpoint(args);
         return new ConfluenceClient(ep.host(), ep.token());
+    }
+
+    private JiraClient jira(JsonNode args) {
+        AtlassianEndpoint ep = endpoint(args);
+        return new JiraClient(ep.host(), ep.token());
     }
 
     private static String resolvePageId(ConfluenceClient client, String pageId, String url)
