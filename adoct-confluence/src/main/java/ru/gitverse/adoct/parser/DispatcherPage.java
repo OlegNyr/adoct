@@ -105,6 +105,7 @@ public class DispatcherPage {
         metadata.put(MetadataKey.FILES_FOLDER, tmp);
         metadata.put(MetadataKey.FILES_FOLDER_NAME, "files");
         metadata.put(MetadataKey.COLOR, exportColors);
+        metadata.put(MetadataKey.IN_MEMORY, true);
         return converter.toAdoc(metadata, tmp);
     }
 

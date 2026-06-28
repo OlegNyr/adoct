@@ -95,6 +95,27 @@ public class DispatcherPageIntegrationTest {
     }
 
     @Test
+    public void toAdocInlinesLongCodeWithoutWritingFiles() {
+        StringBuilder code = new StringBuilder();
+        for (int i = 1; i <= 15; i++) {
+            code.append("line").append(i).append('\n');
+        }
+        String content = "<h1>P</h1>"
+                + "<ac:structured-macro ac:name=\"code\">"
+                + "<ac:parameter ac:name=\"language\">java</ac:parameter>"
+                + "<ac:plain-text-body>" + code + "</ac:plain-text-body></ac:structured-macro>";
+        ContentPage page = new ContentPage("P", "http://confluence/P", "2024-01-01T00:00:00.000+0000",
+                content, "<p>view</p>", Map.of());
+
+        String adoc = new DispatcherPage(new FakeGateway(page), tmp, ObjectMapperExt.INSTANT).toAdoc("1");
+
+        // длинный код инлайнится целиком, без выноса в файл и include::
+        assertFalse("не должно быть include:: — " + adoc, adoc.contains("include::"));
+        assertTrue(adoc, adoc.contains("line1") && adoc.contains("line15"));
+        assertTrue(adoc, adoc.contains("----"));
+    }
+
+    @Test
     public void nonDebugRunOmitsSourceAndEmptyFiles() throws IOException {
         DispatcherPage dispatcher = new DispatcherPage(new FakeGateway(page()), tmp, ObjectMapperExt.INSTANT);
 

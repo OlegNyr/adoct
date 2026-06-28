@@ -48,6 +48,11 @@ final class DrawioRenderer {
         Path attachFolder = (Path) metadata.get(MetadataKey.ATTACH_FOLDER);
         String attachFolderName = (String) metadata.get(MetadataKey.ATTACH_FOLDER_NAME);
 
+        // In-memory режим: вложения не выгружены — отдаём best-effort ссылку без файловых операций.
+        if (Boolean.TRUE.equals(metadata.get(MetadataKey.IN_MEMORY))) {
+            return new Block.RawBlock("image::%s/%s.drawio.png[]".formatted(attachFolderName, diagramName));
+        }
+
         String fileName = prepareEditable(diagramName, attachFolder);
         if (fileName == null) {
             return new Block.RawBlock("Diagram attachment access error: cannot display diagram");

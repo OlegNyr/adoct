@@ -17,7 +17,9 @@ public enum MetadataKey {
         DESTINATION_FOLDER("destinationFolder"),
         FILES_FOLDER("filesFolder"),
         FILES_FOLDER_NAME("filesFolderName"),
-        COLOR("color");
+        COLOR("color"),
+        /** In-memory конвертация: не писать файлы — длинные блоки инлайнить, drawio отдавать ссылкой. */
+        IN_MEMORY("inMemory");
     private final String  key;
 
 }
