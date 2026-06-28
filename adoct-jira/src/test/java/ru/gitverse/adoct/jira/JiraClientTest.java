@@ -155,4 +155,48 @@ public class JiraClientTest {
         client.listSprints("7", "active,future");
         assertEquals("/rest/agile/1.0/board/7/sprint?state=active%2Cfuture", lastUri.get());
     }
+
+    @Test
+    public void deleteIssueSendsDelete() throws Exception {
+        responseStatus = 204;
+        client.deleteIssue("ABC-1", true);
+        assertEquals("DELETE", lastMethod.get());
+        assertEquals("/rest/api/2/issue/ABC-1?deleteSubtasks=true", lastUri.get());
+    }
+
+    @Test
+    public void addWorklogPostsTimeSpent() throws Exception {
+        responseBody = "{\"id\":\"1\"}";
+        com.fasterxml.jackson.databind.node.ObjectNode p =
+                new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+        p.put("timeSpent", "2h");
+        client.addWorklog("ABC-1", p);
+        assertEquals("POST", lastMethod.get());
+        assertEquals("/rest/api/2/issue/ABC-1/worklog", lastUri.get());
+        assertTrue(lastBody.get(), lastBody.get().contains("\"timeSpent\":\"2h\""));
+    }
+
+    @Test
+    public void addIssuesToSprintPostsIssues() throws Exception {
+        responseStatus = 204;
+        client.addIssuesToSprint("5", java.util.List.of("ABC-1", "ABC-2"));
+        assertEquals("POST", lastMethod.get());
+        assertEquals("/rest/agile/1.0/sprint/5/issue", lastUri.get());
+        assertTrue(lastBody.get(), lastBody.get().contains("\"issues\":[\"ABC-1\",\"ABC-2\"]"));
+    }
+
+    @Test
+    public void getChangelogExpandsChangelog() throws Exception {
+        responseBody = "{\"changelog\":{}}";
+        client.getChangelog("ABC-1");
+        assertEquals("/rest/api/2/issue/ABC-1?expand=changelog", lastUri.get());
+    }
+
+    @Test
+    public void removeWatcherEncodesUsername() throws Exception {
+        responseStatus = 204;
+        client.removeWatcher("ABC-1", "john doe");
+        assertEquals("DELETE", lastMethod.get());
+        assertEquals("/rest/api/2/issue/ABC-1/watchers?username=john+doe", lastUri.get());
+    }
 }

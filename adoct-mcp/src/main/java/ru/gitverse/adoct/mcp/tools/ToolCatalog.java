@@ -58,6 +58,28 @@ public final class ToolCatalog {
                 jiraListSprints(),
                 jiraGetSprintIssues(),
                 jiraGetBoardBacklog(),
+                jiraDeleteIssue(),
+                jiraBatchCreateIssues(),
+                jiraGetWorklog(),
+                jiraAddWorklog(),
+                jiraGetLinkTypes(),
+                jiraCreateIssueLink(),
+                jiraRemoveIssueLink(),
+                jiraCreateRemoteIssueLink(),
+                jiraLinkToEpic(),
+                jiraGetWatchers(),
+                jiraAddWatcher(),
+                jiraRemoveWatcher(),
+                jiraGetProjectVersions(),
+                jiraCreateVersion(),
+                jiraGetProjectComponents(),
+                jiraCreateSprint(),
+                jiraUpdateSprint(),
+                jiraAddIssuesToSprint(),
+                jiraSearchFields(),
+                jiraGetChangelog(),
+                jiraGetAttachments(),
+                jiraDownloadAttachments(),
                 confluenceGetPage(),
                 confluenceSearch(),
                 confluenceFindPage(),
@@ -240,6 +262,308 @@ public final class ToolCatalog {
                         jira(args).getBoardBacklog(reqStr(args, "boardId"), optInt(args, "maxResults", 50)))));
     }
 
+    // ---- Jira parity: write / agile / links / attachments -----------------
+
+    private McpTool jiraDeleteIssue() {
+        ObjectNode schema = InputSchema.object()
+                .str("issueKey", "Ключ задачи", true)
+                .bool("deleteSubtasks", "Удалять подзадачи (по умолчанию false)", false)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_delete_issue", "Удалить задачу Jira.", schema, args -> {
+            String key = reqStr(args, "issueKey");
+            jira(args).deleteIssue(key, optBool(args, "deleteSubtasks", false));
+            return ok(mapper.createObjectNode().put("deleted", key));
+        });
+    }
+
+    private McpTool jiraBatchCreateIssues() {
+        ObjectNode schema = InputSchema.object()
+                .arr("issues", "Массив задач: [{projectKey?,issueType,summary,description?}]", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_batch_create_issues", "Массово создать задачи Jira.", schema, args -> {
+            JsonNode items = args.get("issues");
+            if (items == null || !items.isArray() || items.isEmpty()) {
+                throw new IllegalArgumentException("Параметр issues должен быть непустым массивом");
+            }
+            ObjectNode payload = mapper.createObjectNode();
+            ArrayNode updates = payload.putArray("issueUpdates");
+            for (JsonNode it : items) {
+                ObjectNode fields = updates.addObject().putObject("fields");
+                String project = firstNonBlank(text(it, "projectKey"), endpoints.defaultJiraProject().orElse(null));
+                if (project == null || project.isBlank()) {
+                    throw new IllegalArgumentException("Не задан projectKey и нет проекта по умолчанию");
+                }
+                fields.putObject("project").put("key", project);
+                fields.putObject("issuetype").put("name", reqStr(it, "issueType"));
+                fields.put("summary", reqStr(it, "summary"));
+                String description = text(it, "description");
+                if (description != null && !description.isBlank()) {
+                    fields.put("description", description);
+                }
+            }
+            return ok(mapper.writeValueAsString(jira(args).createIssuesBulk(payload)));
+        });
+    }
+
+    private McpTool jiraGetWorklog() {
+        ObjectNode schema = InputSchema.object()
+                .str("issueKey", "Ключ задачи", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_get_worklog", "Журнал работ (worklog) задачи Jira.", schema, args ->
+                ok(mapper.writeValueAsString(jira(args).getWorklog(reqStr(args, "issueKey")))));
+    }
+
+    private McpTool jiraAddWorklog() {
+        ObjectNode schema = InputSchema.object()
+                .str("issueKey", "Ключ задачи", true)
+                .str("timeSpent", "Затраченное время, например 2h 30m", true)
+                .str("comment", "Комментарий (необязательно)", false)
+                .str("started", "Время начала ISO-8601 (необязательно)", false)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_add_worklog", "Добавить запись о работе к задаче Jira.", schema, args -> {
+            ObjectNode payload = mapper.createObjectNode();
+            payload.put("timeSpent", reqStr(args, "timeSpent"));
+            putIfPresent(payload, "comment", text(args, "comment"));
+            putIfPresent(payload, "started", text(args, "started"));
+            return ok(mapper.writeValueAsString(jira(args).addWorklog(reqStr(args, "issueKey"), payload)));
+        });
+    }
+
+    private McpTool jiraGetLinkTypes() {
+        ObjectNode schema = InputSchema.object()
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_get_link_types", "Типы связей задач Jira.", schema, args ->
+                ok(mapper.writeValueAsString(jira(args).getLinkTypes())));
+    }
+
+    private McpTool jiraCreateIssueLink() {
+        ObjectNode schema = InputSchema.object()
+                .str("type", "Название типа связи (например Blocks, Relates)", true)
+                .str("inwardIssue", "Ключ inward-задачи", true)
+                .str("outwardIssue", "Ключ outward-задачи", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_create_issue_link", "Связать две задачи Jira.", schema, args -> {
+            ObjectNode payload = mapper.createObjectNode();
+            payload.putObject("type").put("name", reqStr(args, "type"));
+            payload.putObject("inwardIssue").put("key", reqStr(args, "inwardIssue"));
+            payload.putObject("outwardIssue").put("key", reqStr(args, "outwardIssue"));
+            jira(args).createIssueLink(payload);
+            return ok(mapper.createObjectNode().put("linked", true));
+        });
+    }
+
+    private McpTool jiraRemoveIssueLink() {
+        ObjectNode schema = InputSchema.object()
+                .str("linkId", "ID связи", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_remove_issue_link", "Удалить связь между задачами Jira.", schema, args -> {
+            String linkId = reqStr(args, "linkId");
+            jira(args).removeIssueLink(linkId);
+            return ok(mapper.createObjectNode().put("removed", linkId));
+        });
+    }
+
+    private McpTool jiraCreateRemoteIssueLink() {
+        ObjectNode schema = InputSchema.object()
+                .str("issueKey", "Ключ задачи", true)
+                .str("url", "URL внешней ссылки", true)
+                .str("title", "Заголовок ссылки", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_create_remote_issue_link", "Добавить внешнюю ссылку к задаче Jira.", schema, args -> {
+            ObjectNode payload = mapper.createObjectNode();
+            ObjectNode object = payload.putObject("object");
+            object.put("url", reqStr(args, "url"));
+            object.put("title", reqStr(args, "title"));
+            return ok(mapper.writeValueAsString(
+                    jira(args).createRemoteIssueLink(reqStr(args, "issueKey"), payload)));
+        });
+    }
+
+    private McpTool jiraLinkToEpic() {
+        ObjectNode schema = InputSchema.object()
+                .str("epicKey", "Ключ эпика", true)
+                .arr("issueKeys", "Массив ключей задач", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_link_to_epic", "Привязать задачи к эпику Jira.", schema, args -> {
+            jira(args).linkToEpic(reqStr(args, "epicKey"), strList(args, "issueKeys"));
+            return ok(mapper.createObjectNode().put("linked", true));
+        });
+    }
+
+    private McpTool jiraGetWatchers() {
+        ObjectNode schema = InputSchema.object()
+                .str("issueKey", "Ключ задачи", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_get_issue_watchers", "Наблюдатели задачи Jira.", schema, args ->
+                ok(mapper.writeValueAsString(jira(args).getWatchers(reqStr(args, "issueKey")))));
+    }
+
+    private McpTool jiraAddWatcher() {
+        ObjectNode schema = InputSchema.object()
+                .str("issueKey", "Ключ задачи", true)
+                .str("username", "Имя пользователя", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_add_watcher", "Добавить наблюдателя к задаче Jira.", schema, args -> {
+            jira(args).addWatcher(reqStr(args, "issueKey"), reqStr(args, "username"));
+            return ok(mapper.createObjectNode().put("added", true));
+        });
+    }
+
+    private McpTool jiraRemoveWatcher() {
+        ObjectNode schema = InputSchema.object()
+                .str("issueKey", "Ключ задачи", true)
+                .str("username", "Имя пользователя", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_remove_watcher", "Убрать наблюдателя у задачи Jira.", schema, args -> {
+            jira(args).removeWatcher(reqStr(args, "issueKey"), reqStr(args, "username"));
+            return ok(mapper.createObjectNode().put("removed", true));
+        });
+    }
+
+    private McpTool jiraGetProjectVersions() {
+        ObjectNode schema = InputSchema.object()
+                .str("projectKey", "Ключ проекта (по умолчанию из настроек)", false)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_get_project_versions", "Версии проекта Jira.", schema, args ->
+                ok(mapper.writeValueAsString(jira(args).getProjectVersions(requireProject(args)))));
+    }
+
+    private McpTool jiraCreateVersion() {
+        ObjectNode schema = InputSchema.object()
+                .str("projectKey", "Ключ проекта (по умолчанию из настроек)", false)
+                .str("name", "Название версии", true)
+                .str("description", "Описание (необязательно)", false)
+                .bool("released", "Помечена выпущенной (по умолчанию false)", false)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_create_version", "Создать версию проекта Jira.", schema, args -> {
+            ObjectNode payload = mapper.createObjectNode();
+            payload.put("project", requireProject(args));
+            payload.put("name", reqStr(args, "name"));
+            putIfPresent(payload, "description", text(args, "description"));
+            payload.put("released", optBool(args, "released", false));
+            return ok(mapper.writeValueAsString(jira(args).createVersion(payload)));
+        });
+    }
+
+    private McpTool jiraGetProjectComponents() {
+        ObjectNode schema = InputSchema.object()
+                .str("projectKey", "Ключ проекта (по умолчанию из настроек)", false)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_get_project_components", "Компоненты проекта Jira.", schema, args ->
+                ok(mapper.writeValueAsString(jira(args).getProjectComponents(requireProject(args)))));
+    }
+
+    private McpTool jiraCreateSprint() {
+        ObjectNode schema = InputSchema.object()
+                .str("name", "Название спринта", true)
+                .str("boardId", "ID доски (originBoardId)", true)
+                .str("startDate", "Начало ISO-8601 (необязательно)", false)
+                .str("endDate", "Окончание ISO-8601 (необязательно)", false)
+                .str("goal", "Цель спринта (необязательно)", false)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_create_sprint", "Создать спринт Jira.", schema, args -> {
+            ObjectNode payload = mapper.createObjectNode();
+            payload.put("name", reqStr(args, "name"));
+            payload.put("originBoardId", Integer.parseInt(reqStr(args, "boardId")));
+            putIfPresent(payload, "startDate", text(args, "startDate"));
+            putIfPresent(payload, "endDate", text(args, "endDate"));
+            putIfPresent(payload, "goal", text(args, "goal"));
+            return ok(mapper.writeValueAsString(jira(args).createSprint(payload)));
+        });
+    }
+
+    private McpTool jiraUpdateSprint() {
+        ObjectNode schema = InputSchema.object()
+                .str("sprintId", "ID спринта", true)
+                .str("name", "Новое название (необязательно)", false)
+                .str("state", "Состояние: future|active|closed (необязательно)", false)
+                .str("startDate", "Начало ISO-8601 (необязательно)", false)
+                .str("endDate", "Окончание ISO-8601 (необязательно)", false)
+                .str("goal", "Цель (необязательно)", false)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_update_sprint", "Обновить спринт Jira.", schema, args -> {
+            ObjectNode payload = mapper.createObjectNode();
+            putIfPresent(payload, "name", text(args, "name"));
+            putIfPresent(payload, "state", text(args, "state"));
+            putIfPresent(payload, "startDate", text(args, "startDate"));
+            putIfPresent(payload, "endDate", text(args, "endDate"));
+            putIfPresent(payload, "goal", text(args, "goal"));
+            return ok(mapper.writeValueAsString(jira(args).updateSprint(reqStr(args, "sprintId"), payload)));
+        });
+    }
+
+    private McpTool jiraAddIssuesToSprint() {
+        ObjectNode schema = InputSchema.object()
+                .str("sprintId", "ID спринта", true)
+                .arr("issueKeys", "Массив ключей задач", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_add_issues_to_sprint", "Переместить задачи в спринт Jira.", schema, args -> {
+            jira(args).addIssuesToSprint(reqStr(args, "sprintId"), strList(args, "issueKeys"));
+            return ok(mapper.createObjectNode().put("moved", true));
+        });
+    }
+
+    private McpTool jiraSearchFields() {
+        ObjectNode schema = InputSchema.object()
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_search_fields", "Список полей Jira (системные и кастомные).", schema, args ->
+                ok(mapper.writeValueAsString(jira(args).searchFields())));
+    }
+
+    private McpTool jiraGetChangelog() {
+        ObjectNode schema = InputSchema.object()
+                .str("issueKey", "Ключ задачи", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_get_changelog", "История изменений задачи Jira.", schema, args ->
+                ok(mapper.writeValueAsString(jira(args).getChangelog(reqStr(args, "issueKey")))));
+    }
+
+    private McpTool jiraGetAttachments() {
+        ObjectNode schema = InputSchema.object()
+                .str("issueKey", "Ключ задачи", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_get_attachments", "Метаданные вложений задачи Jira.", schema, args ->
+                ok(mapper.writeValueAsString(jira(args).getAttachmentsMeta(reqStr(args, "issueKey")))));
+    }
+
+    private McpTool jiraDownloadAttachments() {
+        ObjectNode schema = InputSchema.object()
+                .str("issueKey", "Ключ задачи", true)
+                .str("targetDir", "Абсолютный путь папки назначения", true)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_download_attachments", "Скачать вложения задачи Jira в папку.", schema, args -> {
+            List<String> saved = jira(args).downloadAttachments(
+                    reqStr(args, "issueKey"), Path.of(reqStr(args, "targetDir")));
+            ObjectNode out = mapper.createObjectNode();
+            out.put("targetDir", reqStr(args, "targetDir"));
+            ArrayNode files = out.putArray("files");
+            saved.forEach(files::add);
+            return ToolResult.ok(mapper.writeValueAsString(out));
+        });
+    }
+
     // ---- Confluence (read) ------------------------------------------------
 
     private McpTool confluenceGetPage() {
@@ -419,6 +743,26 @@ public final class ToolCatalog {
 
     static String firstNonBlank(String a, String b) {
         return a != null && !a.isBlank() ? a : b;
+    }
+
+    private ToolResult ok(Object value) throws com.fasterxml.jackson.core.JsonProcessingException {
+        return ToolResult.ok(value instanceof String s ? s : mapper.writeValueAsString(value));
+    }
+
+    static List<String> strList(JsonNode args, String name) {
+        JsonNode n = args == null ? null : args.get(name);
+        if (n == null || !n.isArray()) {
+            throw new IllegalArgumentException("Параметр " + name + " должен быть массивом");
+        }
+        List<String> out = new java.util.ArrayList<>();
+        n.forEach(e -> out.add(e.asText()));
+        return out;
+    }
+
+    static void putIfPresent(ObjectNode node, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            node.put(key, value);
+        }
     }
 
     private static String resolvePageId(ConfluenceClient client, String pageId, String url)

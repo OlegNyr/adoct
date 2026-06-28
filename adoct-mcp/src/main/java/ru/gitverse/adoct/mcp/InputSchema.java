@@ -38,6 +38,10 @@ public final class InputSchema {
         return add(name, "object", description, req);
     }
 
+    public InputSchema arr(String name, String description, boolean req) {
+        return add(name, "array", description, req);
+    }
+
     private InputSchema add(String name, String type, String description, boolean req) {
         ObjectNode p = properties.putObject(name);
         p.put("type", type);

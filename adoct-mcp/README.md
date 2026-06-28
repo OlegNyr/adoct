@@ -35,12 +35,23 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
   `AppLifecycleListener`, off-EDT; перезапуск из настроек.
 - Аутентификация Atlassian — **PAT** (`Authorization: Bearer`), цель — **Server/Data Center**.
 
-## Каталог тулов (20) + промпт
+## Каталог тулов (42) + промпт
 
-**Jira (13):** `jira_get_issue`, `jira_search` (JQL), `jira_get_transitions`, `jira_create_issue`,
-`jira_update_issue`, `jira_transition_issue`, `jira_add_comment`, `jira_list_projects`,
-`jira_get_current_user`, `jira_list_boards`, `jira_list_sprints`, `jira_get_sprint_issues`,
-`jira_get_board_backlog`.
+**Jira — задачи:** `jira_get_issue`, `jira_search` (JQL), `jira_get_transitions`,
+`jira_create_issue`, `jira_update_issue`, `jira_transition_issue`, `jira_delete_issue`,
+`jira_batch_create_issues`, `jira_add_comment`, `jira_get_changelog`.
+
+**Jira — агайл:** `jira_list_boards`, `jira_list_sprints`, `jira_get_sprint_issues`,
+`jira_get_board_backlog`, `jira_create_sprint`, `jira_update_sprint`, `jira_add_issues_to_sprint`,
+`jira_link_to_epic`.
+
+**Jira — связи / наблюдатели / worklog:** `jira_get_link_types`, `jira_create_issue_link`,
+`jira_remove_issue_link`, `jira_create_remote_issue_link`, `jira_get_issue_watchers`,
+`jira_add_watcher`, `jira_remove_watcher`, `jira_get_worklog`, `jira_add_worklog`.
+
+**Jira — проект / метаданные / вложения:** `jira_list_projects`, `jira_get_current_user`,
+`jira_get_project_versions`, `jira_create_version`, `jira_get_project_components`,
+`jira_search_fields`, `jira_get_attachments`, `jira_download_attachments`.
 
 **Confluence (7):** `confluence_get_page`, `confluence_search` (CQL), `confluence_find_page`,
 `confluence_get_child_pages`, `confluence_get_user`, `confluence_export_tree_to_adoc` ⭐,
@@ -56,7 +67,7 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
 | Транспорт | HTTP (свой JSON-RPC, без SDK) | STDIO / SSE / HTTP | Remote HTTP (SSE) |
 | Цель | **Server/Data Center** | Cloud **и** Server/DC | Только **Cloud** |
 | Аутентификация | PAT (из настроек IDE) | PAT / Basic / OAuth | OAuth 2.1 |
-| Кол-во тулов | **20** (фокус на PO) | **~72** (52 Jira + 20 Confluence) | много (Jira/Confluence/JSM/Bitbucket/Compass) |
+| Кол-во тулов | **42** (35 Jira + 7 Confluence) | **~72** (52 Jira + 20 Confluence) | много (Jira/Confluence/JSM/Bitbucket/Compass) |
 | Продукты | Jira + Confluence | Jira + Confluence | + JSM, Bitbucket, Compass |
 | Экспорт/публикация AsciiDoc | ✅ **уникально** | ❌ | ❌ |
 | Персона-промпт | ✅ `product_owner` | ❌ | ❌ |
@@ -69,15 +80,16 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
 | Jira: получить задачу / JQL-поиск | ✅ | ✅ |
 | Jira: создать / обновить / перейти по статусу / комментарий | ✅ | ✅ |
 | Jira: проекты / текущий пользователь | ✅ | ✅ |
-| Jira: доски / спринты / задачи спринта / бэклог | ✅ | ✅ (read) |
-| Jira: удаление, batch-создание | ✅ | ❌ |
-| Jira: worklog (трудозатраты) | ✅ | ❌ |
-| Jira: связи задач / epic-link / remote-link | ✅ | ❌ |
-| Jira: watchers | ✅ | ❌ |
-| Jira: версии / компоненты проекта | ✅ | ❌ |
-| Jira: создать/обновить спринт, добавить в спринт | ✅ | ❌ (только чтение) |
-| Jira: поля/опции, changelog, dev-info, SLA, Service Desk, ProForma | ✅ | ❌ |
-| Jira: вложения (скачать/картинки) | ✅ | ❌ |
+| Jira: доски / спринты / задачи спринта / бэклог | ✅ | ✅ |
+| Jira: удаление, batch-создание | ✅ | ✅ |
+| Jira: worklog (трудозатраты) | ✅ | ✅ |
+| Jira: связи задач / epic-link / remote-link | ✅ | ✅ |
+| Jira: watchers | ✅ | ✅ |
+| Jira: версии / компоненты проекта | ✅ | ✅ |
+| Jira: создать/обновить спринт, добавить в спринт | ✅ | ✅ |
+| Jira: поля (field), changelog | ✅ | ✅ |
+| Jira: вложения (скачать/метаданные) | ✅ | ✅ |
+| Jira: dev-info, SLA, Service Desk, ProForma (нужны приложения) | ✅ | ❌ |
 | Confluence: CQL-поиск / страница / дочерние / пользователь | ✅ | ✅ |
 | Confluence: найти страницу по space+title | ⚠️ (через CQL) | ✅ |
 | Confluence: создать / обновить страницу | ✅ | ⚠️ через `confluence_publish_adoc` (из AsciiDoc) |
