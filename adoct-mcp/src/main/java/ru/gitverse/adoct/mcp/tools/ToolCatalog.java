@@ -52,6 +52,12 @@ public final class ToolCatalog {
                 jiraUpdateIssue(),
                 jiraTransitionIssue(),
                 jiraAddComment(),
+                jiraListProjects(),
+                jiraGetCurrentUser(),
+                jiraListBoards(),
+                jiraListSprints(),
+                jiraGetSprintIssues(),
+                jiraGetBoardBacklog(),
                 confluenceGetPage(),
                 confluenceSearch(),
                 confluenceFindPage(),
@@ -173,6 +179,64 @@ public final class ToolCatalog {
             JsonNode comment = jira(args).addComment(reqStr(args, "issueKey"), reqStr(args, "body"));
             return ToolResult.ok(mapper.writeValueAsString(comment));
         });
+    }
+
+    private McpTool jiraListProjects() {
+        ObjectNode schema = InputSchema.object()
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_list_projects", "Список проектов Jira.", schema, args ->
+                ToolResult.ok(mapper.writeValueAsString(jira(args).listProjects())));
+    }
+
+    private McpTool jiraGetCurrentUser() {
+        ObjectNode schema = InputSchema.object()
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_get_current_user", "Текущий пользователь Jira (владелец токена).", schema, args ->
+                ToolResult.ok(mapper.writeValueAsString(jira(args).getCurrentUser())));
+    }
+
+    private McpTool jiraListBoards() {
+        ObjectNode schema = InputSchema.object()
+                .str("projectKeyOrId", "Фильтр по проекту (необязательно)", false)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_list_boards", "Agile-доски Jira (опц. фильтр по проекту).", schema, args ->
+                ToolResult.ok(mapper.writeValueAsString(jira(args).listBoards(text(args, "projectKeyOrId")))));
+    }
+
+    private McpTool jiraListSprints() {
+        ObjectNode schema = InputSchema.object()
+                .str("boardId", "ID доски", true)
+                .str("state", "Фильтр состояний через запятую: active,future,closed (необязательно)", false)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_list_sprints", "Спринты доски Jira.", schema, args ->
+                ToolResult.ok(mapper.writeValueAsString(
+                        jira(args).listSprints(reqStr(args, "boardId"), text(args, "state")))));
+    }
+
+    private McpTool jiraGetSprintIssues() {
+        ObjectNode schema = InputSchema.object()
+                .str("sprintId", "ID спринта", true)
+                .integer("maxResults", "Лимит (1..100, по умолчанию 50)", false)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_get_sprint_issues", "Задачи спринта Jira.", schema, args ->
+                ToolResult.ok(mapper.writeValueAsString(
+                        jira(args).getSprintIssues(reqStr(args, "sprintId"), optInt(args, "maxResults", 50)))));
+    }
+
+    private McpTool jiraGetBoardBacklog() {
+        ObjectNode schema = InputSchema.object()
+                .str("boardId", "ID доски", true)
+                .integer("maxResults", "Лимит (1..100, по умолчанию 50)", false)
+                .str("host", "Хост Jira; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("jira_get_board_backlog", "Бэклог доски Jira.", schema, args ->
+                ToolResult.ok(mapper.writeValueAsString(
+                        jira(args).getBoardBacklog(reqStr(args, "boardId"), optInt(args, "maxResults", 50)))));
     }
 
     // ---- Confluence (read) ------------------------------------------------

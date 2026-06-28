@@ -91,6 +91,55 @@ public final class JiraClient {
         return mapper.readTree(response.body());
     }
 
+    /** Список проектов: {@code GET /rest/api/2/project} → массив проектов. */
+    public JsonNode listProjects() throws IOException, InterruptedException {
+        return getJson("/rest/api/2/project", "получить список проектов");
+    }
+
+    /** Текущий пользователь (владелец токена): {@code GET /rest/api/2/myself}. */
+    public JsonNode getCurrentUser() throws IOException, InterruptedException {
+        return getJson("/rest/api/2/myself", "получить текущего пользователя");
+    }
+
+    /** Agile-доски: {@code GET /rest/agile/1.0/board} (опц. фильтр по проекту). */
+    public JsonNode listBoards(String projectKeyOrId) throws IOException, InterruptedException {
+        String path = "/rest/agile/1.0/board";
+        if (projectKeyOrId != null && !projectKeyOrId.isBlank()) {
+            path += "?projectKeyOrId=" + URLEncoder.encode(projectKeyOrId.trim(), StandardCharsets.UTF_8);
+        }
+        return getJson(path, "получить список досок");
+    }
+
+    /** Спринты доски: {@code GET /rest/agile/1.0/board/{id}/sprint} (опц. фильтр по state, напр. active,future). */
+    public JsonNode listSprints(String boardId, String state) throws IOException, InterruptedException {
+        String path = "/rest/agile/1.0/board/" + boardId + "/sprint";
+        if (state != null && !state.isBlank()) {
+            path += "?state=" + URLEncoder.encode(state.trim(), StandardCharsets.UTF_8);
+        }
+        return getJson(path, "получить спринты доски " + boardId);
+    }
+
+    /** Задачи спринта: {@code GET /rest/agile/1.0/sprint/{id}/issue} с лимитом (1..100, по умолчанию 50). */
+    public JsonNode getSprintIssues(String sprintId, int maxResults) throws IOException, InterruptedException {
+        int limit = maxResults <= 0 ? 50 : Math.min(maxResults, 100);
+        return getJson("/rest/agile/1.0/sprint/" + sprintId + "/issue?maxResults=" + limit,
+                "получить задачи спринта " + sprintId);
+    }
+
+    /** Бэклог доски: {@code GET /rest/agile/1.0/board/{id}/backlog} с лимитом (1..100, по умолчанию 50). */
+    public JsonNode getBoardBacklog(String boardId, int maxResults) throws IOException, InterruptedException {
+        int limit = maxResults <= 0 ? 50 : Math.min(maxResults, 100);
+        return getJson("/rest/agile/1.0/board/" + boardId + "/backlog?maxResults=" + limit,
+                "получить бэклог доски " + boardId);
+    }
+
+    private JsonNode getJson(String path, String action) throws IOException, InterruptedException {
+        HttpRequest request = baseRequest(path).GET().build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        ensureSuccess(response, action);
+        return mapper.readTree(response.body());
+    }
+
     /** Создаёт задачу из payload {@code {"fields": {...}}} и возвращает ключ новой задачи. */
     public String createIssue(JsonNode payload) throws IOException, InterruptedException {
         HttpRequest request = baseRequest("/rest/api/2/issue")

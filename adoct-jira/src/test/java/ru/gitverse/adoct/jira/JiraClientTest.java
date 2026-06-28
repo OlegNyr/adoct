@@ -127,4 +127,32 @@ public class JiraClientTest {
         assertEquals("31", client.getTransitions("ABC-1").path("transitions").get(0).path("id").asText());
         assertEquals("/rest/api/2/issue/ABC-1/transitions", lastUri.get());
     }
+
+    @Test
+    public void listBoardsFiltersByProject() throws Exception {
+        responseBody = "{\"values\":[]}";
+        client.listBoards("ABC");
+        assertEquals("/rest/agile/1.0/board?projectKeyOrId=ABC", lastUri.get());
+    }
+
+    @Test
+    public void listBoardsNoFilter() throws Exception {
+        responseBody = "{\"values\":[]}";
+        client.listBoards(null);
+        assertEquals("/rest/agile/1.0/board", lastUri.get());
+    }
+
+    @Test
+    public void getSprintIssuesClampsMaxResults() throws Exception {
+        responseBody = "{\"issues\":[]}";
+        client.getSprintIssues("5", 999);
+        assertEquals("/rest/agile/1.0/sprint/5/issue?maxResults=100", lastUri.get());
+    }
+
+    @Test
+    public void listSprintsPassesState() throws Exception {
+        responseBody = "{\"values\":[]}";
+        client.listSprints("7", "active,future");
+        assertEquals("/rest/agile/1.0/board/7/sprint?state=active%2Cfuture", lastUri.get());
+    }
 }
