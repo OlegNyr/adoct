@@ -92,6 +92,17 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
 (диаграмма *PlantUML state* → `jira_get_workflow`; живые статусы — `jira_get_project_statuses`). Назначение —
 `jira_assign_issue`. Изменения настроек перезапускают сервер и сразу видны тулам.
 
+## CLI и GraalVM native
+
+Модуль `adoct-mcp-cli` поднимает тот же сервер из командной строки: **stdio** (по умолчанию, один
+JSON-RPC на строку) или **HTTP** (`--http --port N`). Конфиг — `--config <file.json>` и/или `MCP_*`
+(env): `MCP_HOST`/`MCP_TOKEN`, `MCP_PORT`, `MCP_TRANSPORT`, `MCP_JIRA_PROJECT`, `MCP_CONFLUENCE_SPACE`.
+
+- JVM: `./gradlew :adoct-mcp-cli:installDist` → `build/install/adoct-mcp/bin/adoct-mcp`.
+- Native (GraalVM): `./gradlew :adoct-mcp-cli:nativeCompile --no-configuration-cache` (вход
+  `McpCliNative` → `ToolRegistry.coreTools()`, **61 тул** без asciidoctorj/JRuby-зависимого
+  `confluence_publish_adoc`). Нужен GraalVM 21 в `GRAALVM_HOME` и C-тулчейн (на Windows — Windows SDK + MSVC).
+
 ## Сравнение с проектами на GitHub
 
 | | **adoct-mcp (наш)** | **sooperset/mcp-atlassian** | **atlassian/atlassian-mcp-server (офиц.)** |

@@ -17,11 +17,13 @@ pngj = "2.0.1"
 # plugins
 changelog = "2.2.1"
 kotlin = "2.1.20"
+graalvm = "0.10.3"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 sshj = { group = "com.hierynomus", name = "sshj", version.ref = "sshj" }
 slf4jApi = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
+slf4jSimple = { group = "org.slf4j", name = "slf4j-simple", version.ref = "slf4j" }
 asciidoctorj = { group = "org.asciidoctor", name = "asciidoctorj", version.ref = "asciidoctorj" }
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 jacksonDatabind = { group = "com.fasterxml.jackson.core", name = "jackson-databind", version.ref = "jackson" }
@@ -35,3 +37,4 @@ pngj = { group = "ar.com.hjg", name = "pngj", version.ref = "pngj" }
 changelog = { id = "org.jetbrains.changelog", version.ref = "changelog" }
 intelliJPlatform = { id = "org.jetbrains.intellij.platform" }
 kotlin = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+graalvmNative = { id = "org.graalvm.buildtools.native", version.ref = "graalvm" }

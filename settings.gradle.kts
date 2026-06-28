@@ -14,6 +14,7 @@ include(
     ":adoct-jira",
     ":adoct-anonymize",
     ":adoct-mcp",
+    ":adoct-mcp-cli",
     ":adoct-idea",
 )
 

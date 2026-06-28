@@ -65,6 +65,7 @@ import ru.gitverse.adoct.mcp.tools.jira.JiraTransitionIssue;
 import ru.gitverse.adoct.mcp.tools.jira.JiraUpdateIssue;
 import ru.gitverse.adoct.mcp.tools.jira.JiraUpdateSprint;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -80,8 +81,12 @@ public final class ToolRegistry {
         this.ctx = new ToolContext(endpoints);
     }
 
-    /** Фабрики всех инструментов (по одному классу на инструмент). */
-    private static List<Tool> factories() {
+    /**
+     * Фабрики инструментов без asciidoctorj-зависимого {@code confluence_publish_adoc} (тот тянет
+     * JRuby и несовместим с GraalVM native-image). Native-сборка использует {@link #coreTools()},
+     * который ссылается только сюда — поэтому {@code ConfluencePublishAdoc} в native-граф не попадает.
+     */
+    private static List<Tool> coreFactories() {
         return List.of(
                 // ---- Jira ----
                 new JiraGetIssue(),
@@ -133,7 +138,6 @@ public final class ToolRegistry {
                 new ConfluenceGetChildPages(),
                 new ConfluenceGetUser(),
                 new ConfluenceExportTreeToAdoc(),
-                new ConfluencePublishAdoc(),
                 new ConfluenceDeletePage(),
                 new ConfluenceMovePage(),
                 new ConfluenceGetPageHistory(),
@@ -150,8 +154,24 @@ public final class ToolRegistry {
                 new ConfluenceDeleteAttachment());
     }
 
-    /** Строит список всех инструментов с общим контекстом. */
+    /** Полный набор фабрик: core + asciidoctorj-зависимый {@code confluence_publish_adoc}. */
+    private static List<Tool> allFactories() {
+        List<Tool> all = new ArrayList<>(coreFactories());
+        all.add(new ConfluencePublishAdoc());
+        return all;
+    }
+
+    /** Полный набор инструментов (включая publish_adoc) — для JVM/плагина. */
     public List<McpTool> tools() {
-        return factories().stream().map(t -> t.create(ctx)).toList();
+        return build(allFactories());
+    }
+
+    /** Набор без asciidoctorj/JRuby (native-совместимый) — для GraalVM native-сборки CLI. */
+    public List<McpTool> coreTools() {
+        return build(coreFactories());
+    }
+
+    private List<McpTool> build(List<Tool> factories) {
+        return factories.stream().map(t -> t.create(ctx)).toList();
     }
 }

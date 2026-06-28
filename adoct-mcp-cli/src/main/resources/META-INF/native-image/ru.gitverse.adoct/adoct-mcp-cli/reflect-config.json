@@ -1,0 +1,20 @@
+[
+  {
+    "name": "ru.gitverse.adoct.mcp.TeamMember",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ru.gitverse.adoct.mcp.Template",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ru.gitverse.adoct.parser.confluence.LinkResult",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  }
+]

@@ -104,6 +104,32 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
 
 Назначение — `jira_assign_issue`. Изменения в настройках перезапускают сервер и сразу видны тулам.
 
+== Запуск из командной строки (CLI) и GraalVM native
+
+Модуль `adoct-mcp-cli` запускает тот же MCP-сервер вне IDE:
+
+* *stdio* (по умолчанию) — один JSON-RPC на строку (классический локальный MCP, который клиент
+  поднимает на сессию);
+* *HTTP* — `--http [--port N] [--bind H]` (как встроенный сервер плагина).
+
+Конфигурация (по возрастанию приоритета): JSON-файл `--config <file>`, переменные окружения `MCP_*`
+(`MCP_HOST`/`MCP_TOKEN` — быстрый одно-эндпоинтный режим, плюс `MCP_PORT`, `MCP_BIND`, `MCP_TRANSPORT`,
+`MCP_JIRA_PROJECT`, `MCP_CONFLUENCE_SPACE`), аргументы CLI. Файл задаёт `endpoints`/`team`/`templates`/`workflowDiagram`.
+
+JVM-запуск: `./gradlew :adoct-mcp-cli:installDist`, затем `build/install/adoct-mcp/bin/adoct-mcp`.
+
+=== GraalVM native-image
+
+Нативный бинарь стартует мгновенно — поэтому stdio-режим практичен (исходно от stdio отказывались
+именно из-за медленного старта JVM). Native-вход — `McpCliNative`, он использует
+`ToolRegistry.coreTools()` *без* `confluence_publish_adoc`: тот тянет asciidoctorj/JRuby, несовместимый
+с native-image. В нативном бинаре **61 тул**; для публикации AsciiDoc используйте JVM-режим или плагин.
+
+Сборка: `./gradlew :adoct-mcp-cli:nativeCompile --no-configuration-cache`
+(флаг — из-за известного конфликта плагина GraalVM с Gradle configuration-cache). Требуется GraalVM
+(JDK 21) в `GRAALVM_HOME`, а на Windows — установленный **Windows SDK + MSVC** (сборка из
+«x64 Native Tools Command Prompt for VS 2022»). Результат — `build/native/nativeCompile/adoct-mcp`.
+
 == Сравнение с проектами на GitHub
 
 [cols="1,2,2,2", options="header"]
