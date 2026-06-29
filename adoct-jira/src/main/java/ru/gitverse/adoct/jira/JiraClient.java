@@ -185,6 +185,42 @@ public final class JiraClient {
         sendNoContent("POST", "/rest/api/2/issueLink", payload, "создать связь задач");
     }
 
+    /**
+     * Резолвит человекочитаемое имя типа связи в каноническое {@code name} по {@code /issueLinkType}
+     * (совпадение по {@code name}, {@code inward} или {@code outward}, регистронезависимо).
+     *
+     * @throws IllegalArgumentException если тип не найден — с перечислением доступных
+     */
+    public String resolveLinkTypeName(String typeName) throws IOException, InterruptedException {
+        String wanted = typeName == null ? "" : typeName.trim();
+        java.util.List<String> available = new java.util.ArrayList<>();
+        for (JsonNode type : getLinkTypes().path("issueLinkTypes")) {
+            String name = type.path("name").asText();
+            available.add(name);
+            if (name.equalsIgnoreCase(wanted)
+                    || type.path("inward").asText().equalsIgnoreCase(wanted)
+                    || type.path("outward").asText().equalsIgnoreCase(wanted)) {
+                return name;
+            }
+        }
+        throw new IllegalArgumentException("Неизвестный тип связи '" + typeName + "'. Доступные: " + available);
+    }
+
+    /**
+     * Связывает две задачи внутренней связью: резолвит {@code typeName} по {@code /issueLinkType} и
+     * шлёт {@code POST /rest/api/2/issueLink}. Возвращает каноническое имя типа.
+     */
+    public String linkIssues(String inwardKey, String outwardKey, String typeName)
+            throws IOException, InterruptedException {
+        String resolved = resolveLinkTypeName(typeName);
+        ObjectNode payload = mapper.createObjectNode();
+        payload.putObject("type").put("name", resolved);
+        payload.putObject("inwardIssue").put("key", inwardKey);
+        payload.putObject("outwardIssue").put("key", outwardKey);
+        createIssueLink(payload);
+        return resolved;
+    }
+
     /** Удаляет связь: {@code DELETE /rest/api/2/issueLink/{id}}. */
     public void removeIssueLink(String linkId) throws IOException, InterruptedException {
         sendNoContent("DELETE", "/rest/api/2/issueLink/" + linkId, null, "удалить связь " + linkId);

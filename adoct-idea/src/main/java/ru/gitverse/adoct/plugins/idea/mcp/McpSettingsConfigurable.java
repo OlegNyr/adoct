@@ -3,6 +3,9 @@ package ru.gitverse.adoct.plugins.idea.mcp;
 import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.ConfigurationException;
+import com.intellij.openapi.ui.DialogBuilder;
+import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.ui.DoubleClickListener;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.ToolbarDecorator;
 import com.intellij.ui.components.JBCheckBox;
@@ -21,6 +24,7 @@ import javax.swing.ListSelectionModel;
 import javax.swing.table.DefaultTableModel;
 import java.awt.FlowLayout;
 import java.awt.datatransfer.StringSelection;
+import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -40,6 +44,9 @@ public final class McpSettingsConfigurable implements Configurable {
     private JBTextField defaultConfluenceSpace;
     private JBTextField urlField;
     private JBLabel statusLabel;
+    private JBCheckBox toolsJira;
+    private JBCheckBox toolsConfluence;
+    private JBCheckBox toolsBitbucket;
     private DefaultTableModel teamModel;
     private JBTable teamTable;
     private JPanel panel;
@@ -56,12 +63,23 @@ public final class McpSettingsConfigurable implements Configurable {
         port = new JBTextField();
         defaultJiraProject = new JBTextField();
         defaultConfluenceSpace = new JBTextField();
+        toolsJira = new JBCheckBox("Jira");
+        toolsConfluence = new JBCheckBox("Confluence");
+        toolsBitbucket = new JBCheckBox("Bitbucket");
 
-        teamModel = editableModel("username", "Имя", "Роль");
+        teamModel = readOnlyModel("username", "Имя", "Роль");
         teamTable = new JBTable(teamModel);
         teamTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        new DoubleClickListener() {
+            @Override
+            protected boolean onDoubleClick(MouseEvent e) {
+                editMember(teamTable.getSelectedRow());
+                return true;
+            }
+        }.installOn(teamTable);
         JPanel teamPanel = ToolbarDecorator.createDecorator(teamTable)
-                .setAddAction(b -> teamModel.addRow(new Object[] {"", "", ""}))
+                .setAddAction(b -> editMember(-1))
+                .setEditAction(b -> editMember(teamTable.getSelectedRow()))
                 .setRemoveAction(b -> removeSelected(teamTable, teamModel))
                 .createPanel();
 
@@ -74,6 +92,7 @@ public final class McpSettingsConfigurable implements Configurable {
                 .addTooltip("Ключ (ABC) или URL задачи/проекта")
                 .addLabeledComponent("Пространство Confluence по умолчанию:", defaultConfluenceSpace)
                 .addTooltip("Ключ (PLCHAT) или URL страницы")
+                .addLabeledComponent("Группы инструментов:", toolGroupsRow())
                 .addLabeledComponent("Команда (username / имя / роль):", teamPanel)
                 .addComponentFillVertically(new JPanel(), 0)
                 .getPanel();
@@ -100,6 +119,15 @@ public final class McpSettingsConfigurable implements Configurable {
         return row;
     }
 
+    /** Галки групп инструментов: выключенная группа не отдаётся по MCP (тулы скрываются). */
+    private JComponent toolGroupsRow() {
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        row.add(toolsJira);
+        row.add(toolsConfluence);
+        row.add(toolsBitbucket);
+        return row;
+    }
+
     @Override
     public boolean isModified() {
         McpSettingsService s = McpSettingsService.getInstance();
@@ -108,6 +136,9 @@ public final class McpSettingsConfigurable implements Configurable {
                 || !port.getText().trim().equals(String.valueOf(s.getPort()))
                 || !defaultJiraProject.getText().trim().equals(s.getDefaultJiraProject())
                 || !defaultConfluenceSpace.getText().trim().equals(s.getDefaultConfluenceSpace())
+                || toolsJira.isSelected() != s.isToolsJira()
+                || toolsConfluence.isSelected() != s.isToolsConfluence()
+                || toolsBitbucket.isSelected() != s.isToolsBitbucket()
                 || !sameTeam(teamFromTable(), s.getTeam());
     }
 
@@ -131,6 +162,9 @@ public final class McpSettingsConfigurable implements Configurable {
         state.defaultJiraProject = defaultJiraProject.getText().trim();
         state.defaultConfluenceSpace = defaultConfluenceSpace.getText().trim();
         state.team = teamFromTable();
+        state.toolsJira = toolsJira.isSelected();
+        state.toolsConfluence = toolsConfluence.isSelected();
+        state.toolsBitbucket = toolsBitbucket.isSelected();
         McpSettingsService.getInstance().loadState(state);
 
         McpServerService.getInstance().restart();
@@ -146,6 +180,9 @@ public final class McpSettingsConfigurable implements Configurable {
         port.setText(String.valueOf(s.getPort()));
         defaultJiraProject.setText(s.getDefaultJiraProject());
         defaultConfluenceSpace.setText(s.getDefaultConfluenceSpace());
+        toolsJira.setSelected(s.isToolsJira());
+        toolsConfluence.setSelected(s.isToolsConfluence());
+        toolsBitbucket.setSelected(s.isToolsBitbucket());
 
         teamModel.setRowCount(0);
         for (TeamMemberState m : s.getTeam()) {
@@ -173,13 +210,59 @@ public final class McpSettingsConfigurable implements Configurable {
 
     // ---- helpers ----
 
-    private static DefaultTableModel editableModel(String... columns) {
+    private static DefaultTableModel readOnlyModel(String... columns) {
         return new DefaultTableModel(new Object[0][], columns) {
             @Override
             public boolean isCellEditable(int row, int column) {
-                return true;
+                // Правка — через диалог editMember, не inline: корректные фокус и вставка.
+                return false;
             }
         };
+    }
+
+    /**
+     * Диалог добавления/изменения участника команды (username / имя / роль) — обычными полями, где
+     * корректно работают фокус и вставка из буфера.
+     *
+     * @param row индекс строки для изменения; {@code < 0} — добавление нового
+     */
+    private void editMember(int row) {
+        boolean adding = row < 0;
+        JBTextField usernameField = new JBTextField(24);
+        JBTextField displayNameField = new JBTextField(24);
+        JBTextField roleField = new JBTextField(24);
+        if (!adding) {
+            usernameField.setText(cell(teamModel, row, 0));
+            displayNameField.setText(cell(teamModel, row, 1));
+            roleField.setText(cell(teamModel, row, 2));
+        }
+
+        JComponent form = FormBuilder.createFormBuilder()
+                .addLabeledComponent("username:", usernameField)
+                .addLabeledComponent("Имя:", displayNameField)
+                .addLabeledComponent("Роль:", roleField)
+                .getPanel();
+
+        DialogBuilder builder = new DialogBuilder(panel);
+        builder.setTitle(adding ? "Добавить участника" : "Изменить участника");
+        builder.setCenterPanel(form);
+        builder.setPreferredFocusComponent(usernameField);
+        builder.addOkAction();
+        builder.addCancelAction();
+        if (builder.show() != DialogWrapper.OK_EXIT_CODE) {
+            return;
+        }
+
+        Object[] values = {
+                usernameField.getText().trim(), displayNameField.getText().trim(), roleField.getText().trim()
+        };
+        if (adding) {
+            teamModel.addRow(values);
+        } else {
+            for (int col = 0; col < values.length; col++) {
+                teamModel.setValueAt(values[col], row, col);
+            }
+        }
     }
 
     private static void removeSelected(JBTable table, DefaultTableModel model) {

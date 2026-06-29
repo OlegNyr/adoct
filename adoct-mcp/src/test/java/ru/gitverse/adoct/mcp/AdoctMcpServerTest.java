@@ -96,7 +96,7 @@ public class AdoctMcpServerTest {
     public void toolsListExposesAllTools() throws Exception {
         JsonNode tools = rpc("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}")
                 .body().path("result").path("tools");
-        assertEquals(74, tools.size());
+        assertEquals(75, tools.size());
         String names = tools.toString();
         assertTrue(names, names.contains("jira_list_team"));
         assertTrue(names, names.contains("jira_list_templates"));
@@ -111,6 +111,7 @@ public class AdoctMcpServerTest {
         assertTrue(names, names.contains("jira_delete_issue"));
         assertTrue(names, names.contains("jira_add_worklog"));
         assertTrue(names, names.contains("jira_link_to_epic"));
+        assertTrue(names, names.contains("jira_link_issues"));
         assertTrue(names, names.contains("jira_create_sprint"));
         assertTrue(names, names.contains("jira_download_attachments"));
         assertTrue(names, names.contains("confluence_get_page"));

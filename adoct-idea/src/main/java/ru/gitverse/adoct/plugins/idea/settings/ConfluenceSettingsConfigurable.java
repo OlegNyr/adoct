@@ -3,9 +3,18 @@ package ru.gitverse.adoct.plugins.idea.settings;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.SearchableConfigurable;
+import com.intellij.openapi.ui.ComboBox;
+import com.intellij.openapi.ui.DialogBuilder;
+import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.Messages;
+import com.intellij.ui.DocumentAdapter;
+import com.intellij.ui.DoubleClickListener;
 import com.intellij.ui.ToolbarDecorator;
+import com.intellij.ui.components.JBCheckBox;
+import com.intellij.ui.components.JBPasswordField;
+import com.intellij.ui.components.JBTextField;
 import com.intellij.ui.table.JBTable;
+import com.intellij.util.ui.FormBuilder;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -15,10 +24,11 @@ import ru.gitverse.adoct.mcp.AtlassianKind;
 import ru.gitverse.adoct.parser.confluence.ConfluenceClient;
 
 import javax.swing.*;
-import javax.swing.event.TableModelEvent;
+import javax.swing.event.DocumentEvent;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -65,7 +75,9 @@ public class ConfluenceSettingsConfigurable implements SearchableConfigurable, C
             ) {
                 @Override
                 public boolean isCellEditable(int row, int column) {
-                    return true;
+                    // Редактирование — через диалог (Add/Edit), не inline: так корректно работают
+                    // фокус и вставка из буфера (особенно для длинного токена).
+                    return false;
                 }
 
                 @Override
@@ -77,12 +89,18 @@ public class ConfluenceSettingsConfigurable implements SearchableConfigurable, C
             serversTable = new JBTable(tableModel);
             serversTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
             configureTokenColumn();
-            configureTypeColumn();
             sizeFixedColumns();
-            tableModel.addTableModelListener(this::onTableChanged);
+            new DoubleClickListener() {
+                @Override
+                protected boolean onDoubleClick(MouseEvent e) {
+                    editServer(serversTable.getSelectedRow());
+                    return true;
+                }
+            }.installOn(serversTable);
 
             JPanel tablePanel = ToolbarDecorator.createDecorator(serversTable)
-                    .setAddAction(button -> tableModel.addRow(new Object[]{"", "", Boolean.FALSE, ""}))
+                    .setAddAction(button -> editServer(-1))
+                    .setEditAction(button -> editServer(serversTable.getSelectedRow()))
                     .setRemoveAction(button -> {
                         int selectedRow = serversTable.getSelectedRow();
                         if (selectedRow >= 0) {
@@ -210,14 +228,6 @@ public class ConfluenceSettingsConfigurable implements SearchableConfigurable, C
         return servers;
     }
 
-    private void configureTypeColumn() {
-        JComboBox<String> editor = new JComboBox<>();
-        for (AtlassianKind kind : AtlassianKind.values()) {
-            editor.addItem(kind.name());
-        }
-        serversTable.getColumnModel().getColumn(TYPE_COLUMN).setCellEditor(new DefaultCellEditor(editor));
-    }
-
     private void sizeFixedColumns() {
         serversTable.getColumnModel().getColumn(TYPE_COLUMN).setPreferredWidth(110);
         serversTable.getColumnModel().getColumn(TYPE_COLUMN).setMaxWidth(160);
@@ -226,47 +236,92 @@ public class ConfluenceSettingsConfigurable implements SearchableConfigurable, C
     }
 
     /**
-     * Реакция на правки таблицы: авто-определение типа по хосту (если тип ещё не выбран) и поддержка
-     * единственного «по умолчанию» на каждый тип.
+     * Диалог добавления/изменения сервера: host / тип / токен / «по умолчанию» — обычными полями, где
+     * корректно работают фокус и вставка из буфера (в отличие от inline-редактирования ячеек таблицы).
+     *
+     * @param row индекс строки для изменения; {@code < 0} — добавление новой
      */
-    private void onTableChanged(TableModelEvent event) {
-        if (updatingModel || event.getType() != TableModelEvent.UPDATE) {
-            return;
-        }
-        int row = event.getFirstRow();
-        int column = event.getColumn();
-        if (row < 0 || row >= tableModel.getRowCount()) {
-            return;
-        }
-        updatingModel = true;
-        try {
-            if (column == HOST_COLUMN) {
-                autodetectType(row);
-            } else if (column == DEFAULT_COLUMN && Boolean.TRUE.equals(tableModel.getValueAt(row, DEFAULT_COLUMN))) {
-                enforceSingleDefault(row);
-            }
-        } finally {
-            updatingModel = false;
-        }
-    }
+    private void editServer(int row) {
+        boolean adding = row < 0;
+        JBTextField hostField = new JBTextField(30);
+        ComboBox<AtlassianKind> typeCombo = new ComboBox<>(AtlassianKind.values());
+        JBPasswordField tokenField = new JBPasswordField();
+        JBCheckBox defaultBox = new JBCheckBox("Использовать по умолчанию для этого типа");
 
-    /** Если тип в строке не задан — проставить определённый по хосту. */
-    private void autodetectType(int row) {
-        String type = Objects.toString(tableModel.getValueAt(row, TYPE_COLUMN), "").trim();
-        if (!type.isEmpty()) {
+        if (!adding) {
+            String host = Objects.toString(tableModel.getValueAt(row, HOST_COLUMN), "");
+            hostField.setText(host);
+            typeCombo.setSelectedItem(AtlassianKind.parse(
+                    Objects.toString(tableModel.getValueAt(row, TYPE_COLUMN), ""), AtlassianKind.detect(host)));
+            defaultBox.setSelected(Boolean.TRUE.equals(tableModel.getValueAt(row, DEFAULT_COLUMN)));
+            tokenField.setText(Objects.toString(tableModel.getValueAt(row, TOKEN_COLUMN), ""));
+        }
+
+        // Авто-определение типа по хосту, пока пользователь сам не выбрал тип.
+        boolean[] manual = {!adding};
+        boolean[] programmatic = {false};
+        typeCombo.addActionListener(e -> {
+            if (!programmatic[0]) {
+                manual[0] = true;
+            }
+        });
+        hostField.getDocument().addDocumentListener(new DocumentAdapter() {
+            @Override
+            protected void textChanged(@NotNull DocumentEvent e) {
+                if (!manual[0]) {
+                    programmatic[0] = true;
+                    typeCombo.setSelectedItem(AtlassianKind.detect(hostField.getText().trim()));
+                    programmatic[0] = false;
+                }
+            }
+        });
+
+        JComponent form = FormBuilder.createFormBuilder()
+                .addLabeledComponent("Адрес сервера:", hostField)
+                .addLabeledComponent("Тип:", typeCombo)
+                .addLabeledComponent("Токен (PAT):", tokenField)
+                .addComponent(defaultBox)
+                .getPanel();
+
+        DialogBuilder builder = new DialogBuilder(panel);
+        builder.setTitle(adding ? "Добавить сервер" : "Изменить сервер");
+        builder.setCenterPanel(form);
+        builder.setPreferredFocusComponent(hostField);
+        builder.addOkAction();
+        builder.addCancelAction();
+        if (builder.show() != DialogWrapper.OK_EXIT_CODE) {
             return;
         }
-        String host = Objects.toString(tableModel.getValueAt(row, HOST_COLUMN), "").trim();
-        if (!host.isEmpty()) {
-            tableModel.setValueAt(AtlassianKind.detect(host).name(), row, TYPE_COLUMN);
+
+        String host = hostField.getText().trim();
+        if (host.isEmpty()) {
+            Messages.showErrorDialog(message("settings.Confluence.verifyToken.emptyHost"),
+                    message("settings.Confluence.verifyToken.error.title"));
+            return;
+        }
+        String type = ((AtlassianKind) typeCombo.getSelectedItem()).name();
+        String token = new String(tokenField.getPassword());
+        boolean primary = defaultBox.isSelected();
+
+        int target = row;
+        if (adding) {
+            tableModel.addRow(new Object[]{host, type, primary, token});
+            target = tableModel.getRowCount() - 1;
+        } else {
+            tableModel.setValueAt(host, target, HOST_COLUMN);
+            tableModel.setValueAt(type, target, TYPE_COLUMN);
+            tableModel.setValueAt(primary, target, DEFAULT_COLUMN);
+            tableModel.setValueAt(token, target, TOKEN_COLUMN);
+        }
+        if (primary) {
+            enforceSingleDefault(target, type);
         }
     }
 
     /** Снимает «по умолчанию» с остальных строк того же типа. */
-    private void enforceSingleDefault(int row) {
-        String type = effectiveType(row);
+    private void enforceSingleDefault(int keepRow, String type) {
         for (int other = 0; other < tableModel.getRowCount(); other++) {
-            if (other != row && type.equals(effectiveType(other))
+            if (other != keepRow && type.equals(effectiveType(other))
                     && Boolean.TRUE.equals(tableModel.getValueAt(other, DEFAULT_COLUMN))) {
                 tableModel.setValueAt(Boolean.FALSE, other, DEFAULT_COLUMN);
             }
@@ -280,20 +335,12 @@ public class ConfluenceSettingsConfigurable implements SearchableConfigurable, C
     }
 
     private void configureTokenColumn() {
-        // Hide token value in plain text in table view.
+        // Токен в таблице показываем замаскированным; правка — через диалог editServer.
         serversTable.getColumnModel().getColumn(TOKEN_COLUMN).setCellRenderer(new DefaultTableCellRenderer() {
             @Override
             protected void setValue(Object value) {
                 String token = Objects.toString(value, "");
                 super.setValue(token.isEmpty() ? "" : "********");
-            }
-        });
-
-        serversTable.getColumnModel().getColumn(TOKEN_COLUMN).setCellEditor(new DefaultCellEditor(new JPasswordField()) {
-            @Override
-            public Object getCellEditorValue() {
-                Object value = super.getCellEditorValue();
-                return Objects.toString(value, "");
             }
         });
     }

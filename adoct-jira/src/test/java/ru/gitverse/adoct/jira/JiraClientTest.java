@@ -235,4 +235,29 @@ public class JiraClientTest {
         client.assignableUsers("ABC", null, 0, 0);
         assertEquals("/rest/api/2/user/assignable/search?project=ABC&startAt=0&maxResults=50", lastUri.get());
     }
+
+    @Test
+    public void linkIssuesResolvesTypeAndPostsIssueLink() throws Exception {
+        responseBody = "{\"issueLinkTypes\":[{\"name\":\"Requires\","
+                + "\"inward\":\"is required by\",\"outward\":\"requires\"}]}";
+
+        String resolved = client.linkIssues("PLC-19", "PLC-6", "is required by");
+
+        assertEquals("Requires", resolved);
+        // последний запрос — POST /rest/api/2/issueLink
+        assertEquals("POST", lastMethod.get());
+        assertEquals("/rest/api/2/issueLink", lastUri.get());
+        assertTrue(lastBody.get(), lastBody.get().contains("\"name\":\"Requires\""));
+        assertTrue(lastBody.get(), lastBody.get().contains("\"inwardIssue\""));
+        assertTrue(lastBody.get(), lastBody.get().contains("PLC-6"));
+    }
+
+    @Test
+    public void resolveLinkTypeNameThrowsWithAvailableForUnknown() {
+        responseBody = "{\"issueLinkTypes\":[{\"name\":\"Blocks\",\"inward\":\"is blocked by\",\"outward\":\"blocks\"}]}";
+
+        IllegalArgumentException ex = org.junit.Assert.assertThrows(IllegalArgumentException.class,
+                () -> client.resolveLinkTypeName("Nope"));
+        assertTrue(ex.getMessage(), ex.getMessage().contains("Blocks"));
+    }
 }

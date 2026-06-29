@@ -67,6 +67,21 @@ public final class McpSettingsService implements PersistentStateComponent<McpSet
         return state.templates == null ? new ArrayList<>() : new ArrayList<>(state.templates);
     }
 
+    /** Включены ли инструменты Jira. */
+    public boolean isToolsJira() {
+        return state.toolsJira;
+    }
+
+    /** Включены ли инструменты Confluence. */
+    public boolean isToolsConfluence() {
+        return state.toolsConfluence;
+    }
+
+    /** Включены ли инструменты Bitbucket. */
+    public boolean isToolsBitbucket() {
+        return state.toolsBitbucket;
+    }
+
     /**
      * Снимок текущего состояния — основа для частичного сохранения: страница настроек берёт снимок,
      * переопределяет только свой срез и зовёт {@link #loadState}, не затирая поля других страниц.
@@ -80,6 +95,9 @@ public final class McpSettingsService implements PersistentStateComponent<McpSet
         copy.defaultConfluenceSpace = getDefaultConfluenceSpace();
         copy.team = getTeam();
         copy.templates = getTemplates();
+        copy.toolsJira = state.toolsJira;
+        copy.toolsConfluence = state.toolsConfluence;
+        copy.toolsBitbucket = state.toolsBitbucket;
         return copy;
     }
 
@@ -91,6 +109,9 @@ public final class McpSettingsService implements PersistentStateComponent<McpSet
         public String defaultConfluenceSpace = "";
         public List<TeamMemberState> team = new ArrayList<>();
         public List<TemplateState> templates = new ArrayList<>();
+        public boolean toolsJira = true;
+        public boolean toolsConfluence = true;
+        public boolean toolsBitbucket = true;
     }
 
     /** Участник команды для XML-сериализации (нужен no-arg конструктор). */

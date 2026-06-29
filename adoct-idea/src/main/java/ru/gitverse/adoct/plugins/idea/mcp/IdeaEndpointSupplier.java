@@ -7,8 +7,10 @@ import ru.gitverse.adoct.mcp.TeamMember;
 import ru.gitverse.adoct.mcp.Template;
 import ru.gitverse.adoct.plugins.idea.settings.ConfluenceSettingsService;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Поставляет точки подключения MCP из настроек плагина ({@link ConfluenceSettingsService}). Таблица
@@ -42,6 +44,22 @@ public final class IdeaEndpointSupplier implements EndpointSupplier {
                 .filter(m -> m.username != null && !m.username.isBlank())
                 .map(m -> new TeamMember(m.username, m.displayName, m.role))
                 .toList();
+    }
+
+    @Override
+    public Set<AtlassianKind> enabledToolGroups() {
+        McpSettingsService s = McpSettingsService.getInstance();
+        Set<AtlassianKind> groups = EnumSet.noneOf(AtlassianKind.class);
+        if (s.isToolsJira()) {
+            groups.add(AtlassianKind.JIRA);
+        }
+        if (s.isToolsConfluence()) {
+            groups.add(AtlassianKind.CONFLUENCE);
+        }
+        if (s.isToolsBitbucket()) {
+            groups.add(AtlassianKind.BITBUCKET);
+        }
+        return groups;
     }
 
     @Override

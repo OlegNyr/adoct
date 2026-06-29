@@ -1,5 +1,6 @@
 package ru.gitverse.adoct.mcp.tools;
 
+import ru.gitverse.adoct.mcp.AtlassianKind;
 import ru.gitverse.adoct.mcp.EndpointSupplier;
 import ru.gitverse.adoct.mcp.McpTool;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceAddComment;
@@ -62,6 +63,7 @@ import ru.gitverse.adoct.mcp.tools.jira.JiraGetSprintIssues;
 import ru.gitverse.adoct.mcp.tools.jira.JiraGetTransitions;
 import ru.gitverse.adoct.mcp.tools.jira.JiraGetWatchers;
 import ru.gitverse.adoct.mcp.tools.jira.JiraGetWorklog;
+import ru.gitverse.adoct.mcp.tools.jira.JiraLinkIssues;
 import ru.gitverse.adoct.mcp.tools.jira.JiraLinkToEpic;
 import ru.gitverse.adoct.mcp.tools.jira.JiraListAssignableUsers;
 import ru.gitverse.adoct.mcp.tools.jira.JiraListBoards;
@@ -120,6 +122,7 @@ public final class ToolRegistry {
                 new JiraAddWorklog(),
                 new JiraGetLinkTypes(),
                 new JiraCreateIssueLink(),
+                new JiraLinkIssues(),
                 new JiraRemoveIssueLink(),
                 new JiraCreateRemoteIssueLink(),
                 new JiraLinkToEpic(),
@@ -197,6 +200,22 @@ public final class ToolRegistry {
     }
 
     private List<McpTool> build(List<Tool> factories) {
-        return factories.stream().map(t -> t.create(ctx)).toList();
+        java.util.Set<AtlassianKind> enabled = ctx.enabledToolGroups();
+        return factories.stream()
+                .map(t -> t.create(ctx))
+                .filter(tool -> groupEnabled(tool.name(), enabled))
+                .toList();
+    }
+
+    /**
+     * Включена ли группа тула: по префиксу имени ({@code jira_}/{@code confluence_}/{@code bitbucket_}).
+     * Тулы без распознанного префикса показываются всегда.
+     */
+    private static boolean groupEnabled(String name, java.util.Set<AtlassianKind> enabled) {
+        AtlassianKind kind = name.startsWith("jira_") ? AtlassianKind.JIRA
+                : name.startsWith("confluence_") ? AtlassianKind.CONFLUENCE
+                : name.startsWith("bitbucket_") ? AtlassianKind.BITBUCKET
+                : null;
+        return kind == null || enabled.contains(kind);
     }
 }

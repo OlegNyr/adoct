@@ -173,6 +173,11 @@ public final class ToolContext {
         return endpoints.templates();
     }
 
+    /** Включённые группы инструментов (по типу сервиса) из настроек. */
+    public java.util.Set<AtlassianKind> enabledToolGroups() {
+        return endpoints.enabledToolGroups();
+    }
+
     /** Проект Jira: из аргумента {@code projectKey} (ключ или URL) или дефолтный; ошибка, если ни того ни другого. */
     public String requireProject(JsonNode args) {
         String project = firstNonBlank(text(args, "projectKey"), defaultJiraProject().orElse(null));

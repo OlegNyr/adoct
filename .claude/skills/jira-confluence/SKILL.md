@@ -61,12 +61,14 @@ description: >
 ## MCP-сервер (Jira + Confluence из ассистента)
 
 Встроенный MCP-сервер (модуль `:adoct-mcp`) поднимается плагином на старте IDE (HTTP, JSON-RPC).
-**74 тула** (Jira + Confluence + Bitbucket), персона-промпт `product_owner`. Аутентификация — **PAT** (Server/DC).
+**75 тулов** (Jira + Confluence + Bitbucket), персона-промпт `product_owner`. Аутентификация — **PAT** (Server/DC).
 
 Шпаргалка по группам тулов:
-- **Jira задачи/agile:** `jira_search` (JQL), `jira_get_issue`, `jira_create_issue`,
+- **Jira задачи/agile:** `jira_search` (JQL), `jira_get_issue`, `jira_create_issue` (все поля за один
+  вызов: assignee/labels/epicKey/`links`/кастомные поля; частичный успех с предупреждениями),
   `jira_update_issue`, `jira_get_transitions`+`jira_transition_issue`, `jira_add_comment`,
-  спринты/доски (`jira_list_sprints`, `jira_get_board_backlog`…), связи/worklog/watchers.
+  `jira_link_issues` (внутренняя связь задач по имени типа, напр. Requires/Blocks),
+  спринты/доски (`jira_list_sprints`, `jira_get_board_backlog`…), worklog/watchers.
 - **Jira команда/шаблоны/workflow:** `jira_list_team` (ростер), `jira_list_assignable_users`
   (живой список), `jira_assign_issue`, `jira_list_templates` (шаблоны **по типам задач** —
   `{issueType, template}`, свободный текст, модель сама собирает `jira_create_issue`),
@@ -99,10 +101,15 @@ description: >
 3. **Состояния (опц.):** `jira_get_workflow` (диаграмма PlantUML **для типа задачи**, как принято у
    команды) и/или `jira_get_project_statuses` (живые статусы по типам задач) — чтобы понимать, куда
    задача поедет.
-4. **Создание:** `jira_create_issue` (projectKey подставится из настроек, если не задан; issueType,
-   summary, description — по шаблону; при необходимости labels / priority / components).
-5. **Назначение:** `jira_assign_issue <issueKey> <username>` — username из ростера (п.2).
-6. **Связи/спринт (опц.):** `jira_link_to_epic`, `jira_create_issue_link`, `jira_add_issues_to_sprint`.
+4. **Создание (всё за один вызов):** `jira_create_issue` — кроме issueType/summary/description можно
+   сразу задать `assignee`, `labels`, `epicKey`, `links` (напр. `{type:"Requires", issue:"PLC-6",
+   direction:"outward"}` для обязательной связи SDLC Task Lite → User Story), `components`,
+   `fixVersions`, `priority` и произвольные/кастомные `fields` (напр. `customfield_10027`). Реляционные
+   поля проставляются после создания «как сможем» — задача создаётся даже если связь/эпик не легли,
+   а в ответе будет `warnings`.
+5. **Назначение (если не задано в create):** `jira_assign_issue <issueKey> <username>` — username из ростера.
+6. **Связи/спринт (опц.):** `jira_link_issues` (внутренняя связь по имени типа — Requires/Blocks/Relates,
+   тип резолвится по `/issueLinkType`), `jira_link_to_epic`, `jira_add_issues_to_sprint`.
 
 ### Как работать с Jira
 
@@ -130,14 +137,15 @@ description: >
 ## Запуск MCP
 
 - **Плагин** (по умолчанию): Settings → Tools → *AsciiDocTools MCP* — включение, адрес/порт, статус и
-  URL для копирования, проект Jira / пространство Confluence по умолчанию, **ростер команды** и
+  URL для копирования, проект Jira / пространство Confluence по умолчанию, **галки групп инструментов**
+  (Jira / Confluence / Bitbucket — выключенная группа не отдаётся по MCP), **ростер команды** и
   **типы задач** (на каждый тип — многострочный **шаблон** и **диаграмма состояний** PlantUML).
   Изменения перезапускают сервер.
 - **CLI** (`:adoct-mcp-cli`): stdio (по умолчанию) или `--http --port N`. Конфиг — `--config <json>`
   и/или env `MCP_*` (`MCP_HOST`/`MCP_TOKEN`/`MCP_KIND`, `MCP_PORT`…); в JSON `templates[]` =
   `{issueType, body, workflow}`. `./gradlew :adoct-mcp-cli:installDist`.
 - **GraalVM native:** `./gradlew :adoct-mcp-cli:nativeCompile --no-configuration-cache` → бинарь
-  `build/native/nativeCompile/adoct-mcp` (мгновенный старт; **73 тула** — без `confluence_publish_adoc`,
+  `build/native/nativeCompile/adoct-mcp` (мгновенный старт; **74 тула** — без `confluence_publish_adoc`,
   т.к. asciidoctorj/JRuby несовместим с native; публикуй через плагин/JVM-CLI).
 
 ## Настройки подключения

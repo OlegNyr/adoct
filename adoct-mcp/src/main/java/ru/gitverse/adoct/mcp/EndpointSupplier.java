@@ -1,7 +1,9 @@
 package ru.gitverse.adoct.mcp;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Поставщик доступов к Atlassian для тулов MCP. Это шов, отвязывающий модуль от способа хранения
@@ -11,6 +13,15 @@ public interface EndpointSupplier {
 
     /** Все сконфигурированные точки подключения. */
     List<AtlassianEndpoint> all();
+
+    /**
+     * Включённые группы инструментов по типу сервиса. Тул показывается, только если его группа
+     * (по префиксу имени {@code jira_}/{@code confluence_}/{@code bitbucket_}) здесь присутствует.
+     * По умолчанию — все группы (CLI/тесты получают полный набор).
+     */
+    default Set<AtlassianKind> enabledToolGroups() {
+        return EnumSet.allOf(AtlassianKind.class);
+    }
 
     /** Проект Jira по умолчанию (когда инсталляция «однопроектная») — подставляется, если не задан в аргументах. */
     default Optional<String> defaultJiraProject() {

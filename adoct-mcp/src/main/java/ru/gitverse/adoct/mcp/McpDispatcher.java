@@ -40,9 +40,12 @@ public final class McpDispatcher {
             2. jira_list_team (ростер username/имя/роль) или jira_list_assignable_users — выбери исполнителя.
             3. (опц.) jira_get_workflow (диаграмма состояний для типа задачи) и jira_get_project_statuses —
                пойми доступные состояния/переходы.
-            4. jira_create_issue по шаблону (projectKey подставится из настроек, если не задан).
-            5. jira_assign_issue по username из ростера; при необходимости jira_link_to_epic /
-               jira_create_issue_link / jira_add_issues_to_sprint.
+            4. jira_create_issue по шаблону — задавай всё за один вызов: assignee, labels, epicKey,
+               links (напр. обязательная связь SDLC Task Lite → User Story: {type:"Requires",
+               issue:"PLC-6", direction:"outward"}), кастомные fields. Реляционные поля best-effort —
+               смотри warnings в ответе. (projectKey подставится из настроек, если не задан.)
+            5. Доставить недостающее: jira_link_issues (внутренняя связь по имени типа), jira_assign_issue,
+               jira_link_to_epic, jira_add_issues_to_sprint.
 
             Статусы — через jira_get_transitions → jira_transition_issue (переход задаётся id, не именем).
 
