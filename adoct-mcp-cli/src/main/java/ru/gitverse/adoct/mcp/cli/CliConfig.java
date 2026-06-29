@@ -3,6 +3,7 @@ package ru.gitverse.adoct.mcp.cli;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import ru.gitverse.adoct.mcp.AtlassianEndpoint;
+import ru.gitverse.adoct.mcp.AtlassianKind;
 import ru.gitverse.adoct.mcp.TeamMember;
 import ru.gitverse.adoct.mcp.Template;
 
@@ -56,7 +57,9 @@ final class CliConfig {
         for (JsonNode e : root.path("endpoints")) {
             String host = e.path("host").asText("");
             if (!host.isBlank()) {
-                endpoints.add(new AtlassianEndpoint(host, e.path("token").asText("")));
+                AtlassianKind kind = AtlassianKind.parse(e.path("kind").asText(null), AtlassianKind.detect(host));
+                boolean primary = e.path("default").asBoolean(e.path("primary").asBoolean(false));
+                endpoints.add(new AtlassianEndpoint(host, e.path("token").asText(""), kind, primary));
             }
         }
         for (JsonNode m : root.path("team")) {
@@ -88,8 +91,9 @@ final class CliConfig {
         // Быстрый одно-эндпоинтный режим из окружения.
         String host = env.get("MCP_HOST");
         if (host != null && !host.isBlank()) {
+            AtlassianKind kind = AtlassianKind.parse(env.get("MCP_KIND"), AtlassianKind.detect(host));
             endpoints.clear();
-            endpoints.add(new AtlassianEndpoint(host, env.getOrDefault("MCP_TOKEN", "")));
+            endpoints.add(new AtlassianEndpoint(host, env.getOrDefault("MCP_TOKEN", ""), kind, true));
         }
     }
 

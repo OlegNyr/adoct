@@ -43,6 +43,19 @@ public interface EndpointSupplier {
     }
 
     /**
+     * Точка по умолчанию для типа сервиса: сначала помеченная {@code primary} нужного {@code kind},
+     * затем любая того же {@code kind}, и лишь как запасной вариант — первая вообще (чтобы старые
+     * одно-хостовые конфигурации продолжали работать). Так {@code jira_*} уходит на Jira-хост, а не на
+     * первый попавшийся (например Confluence).
+     */
+    default Optional<AtlassianEndpoint> defaultEndpoint(AtlassianKind kind) {
+        List<AtlassianEndpoint> all = all();
+        return all.stream().filter(e -> e.kind() == kind && e.primary()).findFirst()
+                .or(() -> all.stream().filter(e -> e.kind() == kind).findFirst())
+                .or(() -> all.stream().findFirst());
+    }
+
+    /**
      * Подбор точки по хосту из аргумента тула. Пустой {@code host} → {@link #defaultEndpoint()}.
      * Сравнение по «authority» без учёта схемы/завершающего слэша и регистра.
      */

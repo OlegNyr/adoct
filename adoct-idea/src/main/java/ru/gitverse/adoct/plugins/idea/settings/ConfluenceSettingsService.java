@@ -70,7 +70,7 @@ public final class ConfluenceSettingsService implements PersistentStateComponent
                     continue;
                 }
                 String host = normalHost(entry.host);
-                copy.add(new ServerEntry(host, entry.token));
+                copy.add(new ServerEntry(host, entry.token, entry.type, entry.primary));
             }
             return copy;
         }
@@ -92,6 +92,10 @@ public final class ConfluenceSettingsService implements PersistentStateComponent
     public static final class ServerEntry {
         public String host = "";
         public String token = "";
+        /** Тип сервиса: {@code JIRA} / {@code CONFLUENCE} / {@code BITBUCKET} (пусто — определить по хосту). */
+        public String type = "";
+        /** Использовать этот хост по умолчанию для его типа (когда host в вызове не задан). */
+        public boolean primary = false;
 
         public ServerEntry() {
         }
@@ -99,6 +103,13 @@ public final class ConfluenceSettingsService implements PersistentStateComponent
         public ServerEntry(String host, String token) {
             this.host = host;
             this.token = token;
+        }
+
+        public ServerEntry(String host, String token, String type, boolean primary) {
+            this.host = host;
+            this.token = token;
+            this.type = type;
+            this.primary = primary;
         }
     }
 }

@@ -1,6 +1,7 @@
 package ru.gitverse.adoct.plugins.idea.mcp;
 
 import ru.gitverse.adoct.mcp.AtlassianEndpoint;
+import ru.gitverse.adoct.mcp.AtlassianKind;
 import ru.gitverse.adoct.mcp.EndpointSupplier;
 import ru.gitverse.adoct.mcp.TeamMember;
 import ru.gitverse.adoct.mcp.Template;
@@ -20,7 +21,8 @@ public final class IdeaEndpointSupplier implements EndpointSupplier {
     public List<AtlassianEndpoint> all() {
         return ConfluenceSettingsService.getInstance().getServers().stream()
                 .filter(e -> e.getHost() != null && !e.getHost().isBlank())
-                .map(e -> new AtlassianEndpoint(e.getHost(), e.getToken()))
+                .map(e -> new AtlassianEndpoint(e.getHost(), e.getToken(),
+                        AtlassianKind.parse(e.getType(), AtlassianKind.detect(e.getHost())), e.isPrimary()))
                 .toList();
     }
 

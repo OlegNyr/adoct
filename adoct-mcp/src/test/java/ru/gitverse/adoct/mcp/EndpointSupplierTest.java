@@ -42,4 +42,27 @@ public class EndpointSupplierTest {
         EndpointSupplier empty = List::of;
         assertTrue(empty.defaultEndpoint().isEmpty());
     }
+
+    @Test
+    public void defaultEndpointByKindRoutesToMatchingService() {
+        // baseline бага #2: jira-вызов не должен уходить на первый (Confluence) хост
+        assertEquals(jira, supplier.defaultEndpoint(AtlassianKind.JIRA).orElseThrow());
+        assertEquals(conf, supplier.defaultEndpoint(AtlassianKind.CONFLUENCE).orElseThrow());
+    }
+
+    @Test
+    public void defaultEndpointPrefersPrimaryOfKind() {
+        AtlassianEndpoint jira1 = new AtlassianEndpoint("https://j1", "a", AtlassianKind.JIRA, false);
+        AtlassianEndpoint jira2 = new AtlassianEndpoint("https://j2", "b", AtlassianKind.JIRA, true);
+        EndpointSupplier twoJira = () -> List.of(jira1, jira2);
+
+        assertEquals(jira2, twoJira.defaultEndpoint(AtlassianKind.JIRA).orElseThrow());
+    }
+
+    @Test
+    public void defaultEndpointFallsBackToFirstWhenKindAbsent() {
+        // одно-хостовая инсталляция (только Confluence) — jira-вызов всё же получает хоть что-то
+        EndpointSupplier onlyConf = () -> List.of(conf);
+        assertEquals(conf, onlyConf.defaultEndpoint(AtlassianKind.JIRA).orElseThrow());
+    }
 }

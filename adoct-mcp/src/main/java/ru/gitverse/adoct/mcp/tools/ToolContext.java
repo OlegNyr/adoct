@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import ru.gitverse.adoct.jira.JiraClient;
 import ru.gitverse.adoct.mcp.AtlassianEndpoint;
+import ru.gitverse.adoct.mcp.AtlassianKind;
 import ru.gitverse.adoct.mcp.EndpointSupplier;
 import ru.gitverse.adoct.mcp.TeamMember;
 import ru.gitverse.adoct.mcp.Template;
@@ -38,6 +39,8 @@ public final class ToolContext {
 
     private static final Pattern PAGE_ID = Pattern.compile("pageId=(\\d+)");
     private static final Pattern DISPLAY = Pattern.compile("/display/([^/?#]+)/([^/?#]+)");
+    private static final Pattern SPACE_PATH = Pattern.compile("/(?:display|spaces)/([^/?#]+)");
+    private static final Pattern SPACE_QUERY = Pattern.compile("[?&]spaceKey=([^&#]+)");
 
     private final EndpointSupplier endpoints;
     private final ObjectMapper mapper = ObjectMapperExt.INSTANT;
@@ -52,30 +55,37 @@ public final class ToolContext {
 
     // ---- доступы / клиенты ----
 
-    /** Точка подключения по аргументу {@code host} (или дефолтная); ошибка, если ничего не настроено. */
-    public AtlassianEndpoint endpoint(JsonNode args) {
+    /**
+     * Точка подключения по аргументу {@code host}; если {@code host} не задан — точка по умолчанию для
+     * {@code kind} ({@code jira_*} → Jira-хост, {@code confluence_*} → Confluence-хост). Ошибка, если
+     * ничего не настроено.
+     */
+    public AtlassianEndpoint endpoint(JsonNode args, AtlassianKind kind) {
         String host = text(args, "host");
-        return endpoints.forHost(host).orElseThrow(() -> new IllegalArgumentException(
+        Optional<AtlassianEndpoint> resolved = host == null || host.isBlank()
+                ? endpoints.defaultEndpoint(kind)
+                : endpoints.forHost(host);
+        return resolved.orElseThrow(() -> new IllegalArgumentException(
                 "Не настроена точка подключения Atlassian"
                         + (host == null || host.isBlank() ? "" : " для хоста '" + host + "'")
                         + "; настроенные хосты: " + endpoints.all().stream().map(AtlassianEndpoint::host).toList()));
     }
 
-    /** Jira-клиент для выбранной точки. */
+    /** Jira-клиент для выбранной точки (по умолчанию — Jira-хост). */
     public JiraClient jira(JsonNode args) {
-        AtlassianEndpoint ep = endpoint(args);
+        AtlassianEndpoint ep = endpoint(args, AtlassianKind.JIRA);
         return new JiraClient(ep.host(), ep.token());
     }
 
-    /** Confluence-клиент чтения/экспорта (parser-движок). */
+    /** Confluence-клиент чтения/экспорта (parser-движок); по умолчанию — Confluence-хост. */
     public ConfluenceClient confluence(JsonNode args) {
-        AtlassianEndpoint ep = endpoint(args);
+        AtlassianEndpoint ep = endpoint(args, AtlassianKind.CONFLUENCE);
         return new ConfluenceClient(ep.host(), ep.token());
     }
 
-    /** Confluence-клиент записи/публикации (generate-движок). */
+    /** Confluence-клиент записи/публикации (generate-движок); по умолчанию — Confluence-хост. */
     public ru.gitverse.adoct.generate.confluence.ConfluenceClient confluencePublish(JsonNode args) {
-        AtlassianEndpoint ep = endpoint(args);
+        AtlassianEndpoint ep = endpoint(args, AtlassianKind.CONFLUENCE);
         return new ru.gitverse.adoct.generate.confluence.ConfluenceClient(ep.host(), ep.token());
     }
 
@@ -84,9 +94,35 @@ public final class ToolContext {
         return endpoints.defaultJiraProject();
     }
 
-    /** Дефолтное пространство Confluence из настроек (если задано). */
+    /**
+     * Дефолтное пространство Confluence из настроек (если задано). В настройках значение можно задавать
+     * как полный путь/URL страницы — отсюда извлекается только ключ пространства (см. {@link #spaceKeyOf}).
+     */
     public Optional<String> defaultConfluenceSpace() {
-        return endpoints.defaultConfluenceSpace();
+        return endpoints.defaultConfluenceSpace().map(ToolContext::spaceKeyOf).filter(s -> !s.isBlank());
+    }
+
+    /**
+     * Извлекает ключ пространства из произвольной формы: полного URL/пути
+     * ({@code …/display/KEY/Title}, {@code …/spaces/KEY/…}, {@code …?spaceKey=KEY}) или голого ключа.
+     */
+    public static String spaceKeyOf(String value) {
+        if (value == null) {
+            return "";
+        }
+        String s = value.trim();
+        if (s.isEmpty()) {
+            return "";
+        }
+        Matcher q = SPACE_QUERY.matcher(s);
+        if (q.find()) {
+            return URLDecoder.decode(q.group(1), StandardCharsets.UTF_8);
+        }
+        Matcher p = SPACE_PATH.matcher(s);
+        if (p.find()) {
+            return URLDecoder.decode(p.group(1), StandardCharsets.UTF_8);
+        }
+        return s;
     }
 
     /** Ростер команды из настроек. */
