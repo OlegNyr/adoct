@@ -84,10 +84,11 @@ public final class JiraClient {
      *
      * @return корневой JSON ответа поиска ({@code total}, {@code issues[]})
      */
-    public JsonNode searchJql(String jql, int maxResults) throws IOException, InterruptedException {
+    public JsonNode searchJql(String jql, int startAt, int maxResults) throws IOException, InterruptedException {
         int limit = maxResults <= 0 ? 50 : Math.min(maxResults, 100);
         HttpRequest request = baseRequest("/rest/api/2/search"
                 + "?jql=" + URLEncoder.encode(jql, StandardCharsets.UTF_8)
+                + "&startAt=" + Math.max(startAt, 0)
                 + "&maxResults=" + limit)
                 .GET()
                 .build();
@@ -124,18 +125,20 @@ public final class JiraClient {
         return getJson(path, "получить спринты доски " + boardId);
     }
 
-    /** Задачи спринта: {@code GET /rest/agile/1.0/sprint/{id}/issue} с лимитом (1..100, по умолчанию 50). */
-    public JsonNode getSprintIssues(String sprintId, int maxResults) throws IOException, InterruptedException {
+    /** Задачи спринта: {@code GET /rest/agile/1.0/sprint/{id}/issue?startAt=&maxResults=} (1..100, по умолчанию 50). */
+    public JsonNode getSprintIssues(String sprintId, int startAt, int maxResults)
+            throws IOException, InterruptedException {
         int limit = maxResults <= 0 ? 50 : Math.min(maxResults, 100);
-        return getJson("/rest/agile/1.0/sprint/" + sprintId + "/issue?maxResults=" + limit,
-                "получить задачи спринта " + sprintId);
+        return getJson("/rest/agile/1.0/sprint/" + sprintId + "/issue?startAt=" + Math.max(startAt, 0)
+                + "&maxResults=" + limit, "получить задачи спринта " + sprintId);
     }
 
-    /** Бэклог доски: {@code GET /rest/agile/1.0/board/{id}/backlog} с лимитом (1..100, по умолчанию 50). */
-    public JsonNode getBoardBacklog(String boardId, int maxResults) throws IOException, InterruptedException {
+    /** Бэклог доски: {@code GET /rest/agile/1.0/board/{id}/backlog?startAt=&maxResults=} (1..100, по умолчанию 50). */
+    public JsonNode getBoardBacklog(String boardId, int startAt, int maxResults)
+            throws IOException, InterruptedException {
         int limit = maxResults <= 0 ? 50 : Math.min(maxResults, 100);
-        return getJson("/rest/agile/1.0/board/" + boardId + "/backlog?maxResults=" + limit,
-                "получить бэклог доски " + boardId);
+        return getJson("/rest/agile/1.0/board/" + boardId + "/backlog?startAt=" + Math.max(startAt, 0)
+                + "&maxResults=" + limit, "получить бэклог доски " + boardId);
     }
 
     // ---- удаление / массовое создание ----
@@ -241,11 +244,12 @@ public final class JiraClient {
     }
 
     /** Пользователи, на которых можно назначать задачи проекта: {@code GET /rest/api/2/user/assignable/search}. */
-    public JsonNode assignableUsers(String projectKey, String query, int maxResults)
+    public JsonNode assignableUsers(String projectKey, String query, int startAt, int maxResults)
             throws IOException, InterruptedException {
         int limit = maxResults <= 0 ? 50 : Math.min(maxResults, 100);
         String path = "/rest/api/2/user/assignable/search?project="
-                + URLEncoder.encode(projectKey, StandardCharsets.UTF_8) + "&maxResults=" + limit;
+                + URLEncoder.encode(projectKey, StandardCharsets.UTF_8)
+                + "&startAt=" + Math.max(startAt, 0) + "&maxResults=" + limit;
         if (query != null && !query.isBlank()) {
             path += "&query=" + URLEncoder.encode(query.trim(), StandardCharsets.UTF_8);
         }

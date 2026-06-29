@@ -25,6 +25,16 @@ import ru.gitverse.adoct.mcp.tools.confluence.ConfluencePublishAdoc;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceReplyToComment;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceSearch;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceUploadAttachment;
+import ru.gitverse.adoct.mcp.tools.bitbucket.BitbucketBrowse;
+import ru.gitverse.adoct.mcp.tools.bitbucket.BitbucketGetFile;
+import ru.gitverse.adoct.mcp.tools.bitbucket.BitbucketGetPullRequest;
+import ru.gitverse.adoct.mcp.tools.bitbucket.BitbucketGetPullRequestActivities;
+import ru.gitverse.adoct.mcp.tools.bitbucket.BitbucketGetPullRequestDiff;
+import ru.gitverse.adoct.mcp.tools.bitbucket.BitbucketGetRepository;
+import ru.gitverse.adoct.mcp.tools.bitbucket.BitbucketListProjects;
+import ru.gitverse.adoct.mcp.tools.bitbucket.BitbucketListPullRequests;
+import ru.gitverse.adoct.mcp.tools.bitbucket.BitbucketListRepositories;
+import ru.gitverse.adoct.mcp.tools.bitbucket.BitbucketSearch;
 import ru.gitverse.adoct.mcp.tools.jira.JiraAddComment;
 import ru.gitverse.adoct.mcp.tools.jira.JiraAssignIssue;
 import ru.gitverse.adoct.mcp.tools.jira.JiraAddIssuesToSprint;
@@ -155,7 +165,18 @@ public final class ToolRegistry {
                 new ConfluenceGetAttachments(),
                 new ConfluenceUploadAttachment(),
                 new ConfluenceDownloadAttachment(),
-                new ConfluenceDeleteAttachment());
+                new ConfluenceDeleteAttachment(),
+                // ---- Bitbucket (Server/DC) ----
+                new BitbucketSearch(),
+                new BitbucketListProjects(),
+                new BitbucketListRepositories(),
+                new BitbucketGetRepository(),
+                new BitbucketGetFile(),
+                new BitbucketBrowse(),
+                new BitbucketListPullRequests(),
+                new BitbucketGetPullRequest(),
+                new BitbucketGetPullRequestDiff(),
+                new BitbucketGetPullRequestActivities());
     }
 
     /** Полный набор фабрик: core + asciidoctorj-зависимый {@code confluence_publish_adoc}. */

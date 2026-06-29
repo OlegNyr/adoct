@@ -72,18 +72,19 @@ public class JiraClientTest {
     @Test
     public void searchJqlEncodesJqlAndClampsMaxResults() throws Exception {
         responseBody = "{\"total\":1,\"issues\":[{\"key\":\"ABC-1\"}]}";
-        JsonNode root = client.searchJql("project = ABC ORDER BY created", 500);
+        JsonNode root = client.searchJql("project = ABC ORDER BY created", 0, 500);
 
         String uri = lastUri.get();
         assertTrue(uri, uri.startsWith("/rest/api/2/search?jql="));
         assertTrue(uri, uri.contains("project+%3D+ABC")); // пробелы '+' и '=' → %3D
+        assertTrue(uri, uri.contains("&startAt=0"));
         assertTrue(uri, uri.endsWith("&maxResults=100")); // 500 зажат до 100
         assertEquals(1, root.path("total").asInt());
     }
 
     @Test
     public void searchJqlDefaultsMaxResultsWhenNonPositive() throws Exception {
-        client.searchJql("x", 0);
+        client.searchJql("x", 0, 0);
         assertTrue(lastUri.get(), lastUri.get().endsWith("&maxResults=50"));
     }
 
@@ -145,8 +146,8 @@ public class JiraClientTest {
     @Test
     public void getSprintIssuesClampsMaxResults() throws Exception {
         responseBody = "{\"issues\":[]}";
-        client.getSprintIssues("5", 999);
-        assertEquals("/rest/agile/1.0/sprint/5/issue?maxResults=100", lastUri.get());
+        client.getSprintIssues("5", 0, 999);
+        assertEquals("/rest/agile/1.0/sprint/5/issue?startAt=0&maxResults=100", lastUri.get());
     }
 
     @Test
@@ -220,9 +221,10 @@ public class JiraClientTest {
     @Test
     public void assignableUsersBuildsQuery() throws Exception {
         responseBody = "[]";
-        client.assignableUsers("ABC", "jo hn", 500);
+        client.assignableUsers("ABC", "jo hn", 0, 500);
         String uri = lastUri.get();
         assertTrue(uri, uri.startsWith("/rest/api/2/user/assignable/search?project=ABC"));
+        assertTrue(uri, uri.contains("&startAt=0"));
         assertTrue(uri, uri.contains("&maxResults=100"));   // 500 зажат до 100
         assertTrue(uri, uri.contains("&query=jo+hn"));
     }
@@ -230,7 +232,7 @@ public class JiraClientTest {
     @Test
     public void assignableUsersOmitsBlankQuery() throws Exception {
         responseBody = "[]";
-        client.assignableUsers("ABC", null, 0);
-        assertEquals("/rest/api/2/user/assignable/search?project=ABC&maxResults=50", lastUri.get());
+        client.assignableUsers("ABC", null, 0, 0);
+        assertEquals("/rest/api/2/user/assignable/search?project=ABC&startAt=0&maxResults=50", lastUri.get());
     }
 }

@@ -50,6 +50,10 @@ public final class McpDispatcher {
             правки публикуй round-trip через confluence_publish_adoc (связь страница↔файл по :confluency-id:);
             дерево страниц оффлайн — confluence_export_tree_to_adoc.
 
+            Bitbucket (Server/DC): поиск кода — bitbucket_search (по содержимому/именам файлов, фильтр
+            projectKey/repoSlug); навигация — bitbucket_list_projects/list_repositories/get_repository,
+            bitbucket_get_file/browse; ревью — bitbucket_list_pull_requests, bitbucket_get_pull_request[_diff/_activities].
+
             Отвечай по делу, на языке пользователя.""";
 
     private final ObjectMapper mapper = ObjectMapperExt.INSTANT;

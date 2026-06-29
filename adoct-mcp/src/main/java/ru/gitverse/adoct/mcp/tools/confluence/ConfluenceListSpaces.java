@@ -13,10 +13,11 @@ public final class ConfluenceListSpaces implements Tool {
     public McpTool create(ToolContext c) {
         ObjectNode schema = InputSchema.object()
                 .integer("limit", "Максимум пространств (по умолчанию 100)", false)
+                .integer("start", "Смещение для пагинации (по умолчанию 0)", false)
                 .str("host", "Хост Confluence; иначе хост по умолчанию", false)
                 .build();
         return new McpTool("confluence_list_spaces",
                 "Список пространств Confluence (key + name).", schema, args ->
-                c.ok(c.confluence(args).listSpaces(c.optInt(args, "limit", 100))));
+                c.ok(c.confluence(args).listSpaces(c.optInt(args, "start", 0), c.optInt(args, "limit", 100))));
     }
 }

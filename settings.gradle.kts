@@ -12,6 +12,7 @@ rootProject.name = "AsciiDocTools"
 include(
     ":adoct-confluence",
     ":adoct-jira",
+    ":adoct-bitbucket",
     ":adoct-anonymize",
     ":adoct-mcp",
     ":adoct-mcp-cli",

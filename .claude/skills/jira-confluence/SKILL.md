@@ -61,7 +61,7 @@ description: >
 ## MCP-сервер (Jira + Confluence из ассистента)
 
 Встроенный MCP-сервер (модуль `:adoct-mcp`) поднимается плагином на старте IDE (HTTP, JSON-RPC).
-**64 тула** (Jira + Confluence), персона-промпт `product_owner`. Аутентификация — **PAT** (Server/DC).
+**74 тула** (Jira + Confluence + Bitbucket), персона-промпт `product_owner`. Аутентификация — **PAT** (Server/DC).
 
 Шпаргалка по группам тулов:
 - **Jira задачи/agile:** `jira_search` (JQL), `jira_get_issue`, `jira_create_issue`,
@@ -79,6 +79,11 @@ description: >
   в AsciiDoc, in-memory, без скачивания вложений), `confluence_get_page_diff` (`format=adoc`),
   создание/удаление/перемещение, комментарии, метки, вложения.
 - **Движок ⭐:** `confluence_export_tree_to_adoc`, `confluence_publish_adoc`.
+- **Bitbucket (Server/DC):** `bitbucket_search` (поиск кода по содержимому/именам файлов,
+  `POST /rest/search/latest/search`, фильтр `projectKey`/`repoSlug`), навигация —
+  `bitbucket_list_projects`/`list_repositories`/`get_repository`, `bitbucket_get_file`/`browse`; ревью —
+  `bitbucket_list_pull_requests`, `bitbucket_get_pull_request`/`_diff`/`_activities` (чтение). Пагинация —
+  `limit` + `start` (offset).
 
 ## Рабочие сценарии (playbooks)
 
@@ -132,7 +137,7 @@ description: >
   и/или env `MCP_*` (`MCP_HOST`/`MCP_TOKEN`/`MCP_KIND`, `MCP_PORT`…); в JSON `templates[]` =
   `{issueType, body, workflow}`. `./gradlew :adoct-mcp-cli:installDist`.
 - **GraalVM native:** `./gradlew :adoct-mcp-cli:nativeCompile --no-configuration-cache` → бинарь
-  `build/native/nativeCompile/adoct-mcp` (мгновенный старт; **63 тула** — без `confluence_publish_adoc`,
+  `build/native/nativeCompile/adoct-mcp` (мгновенный старт; **73 тула** — без `confluence_publish_adoc`,
   т.к. asciidoctorj/JRuby несовместим с native; публикуй через плагин/JVM-CLI).
 
 ## Настройки подключения

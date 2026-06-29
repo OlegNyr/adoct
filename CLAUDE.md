@@ -13,8 +13,9 @@ A **Gradle multi-module** build; the IntelliJ Platform Gradle Plugin (2.x) is ap
 Modules (Gradle subprojects):
 - `:adoct-confluence` — the **conversion engine** (`parser` = Confluence→AsciiDoc, `generate` = AsciiDoc→Confluence). Pure `java-library`, no IntelliJ dependency.
 - `:adoct-jira` — Jira integration (`JiraClient`). Pure `java-library`.
+- `:adoct-bitbucket` — Bitbucket Server/DC integration (`BitbucketClient`: code search + repos/files/PRs, read-only). Pure `java-library`, JDK HttpClient + Jackson, returns raw `JsonNode`.
 - `:adoct-anonymize` — export anonymizer + bug-report bundling (`anonymize`, `bugreport`). Pure `java-library`, independent of the engine.
-- `:adoct-idea` — the **IntelliJ plugin** (`plugins.idea.*`, `plugin.xml`, message bundles). Applies `org.jetbrains.intellij.platform`; depends on the three library modules and bundles them into the distribution.
+- `:adoct-idea` — the **IntelliJ plugin** (`plugins.idea.*`, `plugin.xml`, message bundles). Applies `org.jetbrains.intellij.platform`; depends on the library modules and bundles them into the distribution.
 
 Common commands:
 - `./gradlew :adoct-idea:runIde` — launch a sandbox IDE (IntelliJ IDEA Community 2025.1.3) with the plugin installed. Primary way to exercise it manually (`Alt+I` file importer, `Alt+Shift+I` Confluence export).

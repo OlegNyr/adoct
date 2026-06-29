@@ -13,9 +13,10 @@ java {
 }
 
 dependencies {
-    // Движок экспорта Confluence и клиент Jira — тулы вызывают их напрямую.
+    // Движок экспорта Confluence и клиенты Jira/Bitbucket — тулы вызывают их напрямую.
     api(project(":adoct-confluence"))
     api(project(":adoct-jira"))
+    api(project(":adoct-bitbucket"))
 
     implementation(libs.jacksonDatabind)
     compileOnly(libs.slf4jApi)

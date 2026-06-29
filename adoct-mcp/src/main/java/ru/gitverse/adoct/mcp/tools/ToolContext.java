@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import ru.gitverse.adoct.bitbucket.BitbucketClient;
 import ru.gitverse.adoct.jira.JiraClient;
 import ru.gitverse.adoct.mcp.AtlassianEndpoint;
 import ru.gitverse.adoct.mcp.AtlassianKind;
@@ -78,6 +79,12 @@ public final class ToolContext {
     public JiraClient jira(JsonNode args) {
         AtlassianEndpoint ep = endpoint(args, AtlassianKind.JIRA);
         return new JiraClient(ep.host(), ep.token());
+    }
+
+    /** Bitbucket-клиент для выбранной точки (по умолчанию — Bitbucket-хост). */
+    public BitbucketClient bitbucket(JsonNode args) {
+        AtlassianEndpoint ep = endpoint(args, AtlassianKind.BITBUCKET);
+        return new BitbucketClient(ep.host(), ep.token());
     }
 
     /** Confluence-клиент чтения/экспорта (parser-движок); по умолчанию — Confluence-хост. */

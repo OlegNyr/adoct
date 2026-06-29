@@ -14,9 +14,11 @@ public final class JiraGetBoardBacklog implements Tool {
         ObjectNode schema = InputSchema.object()
                 .str("boardId", "ID доски", true)
                 .integer("maxResults", "Лимит (1..100, по умолчанию 50)", false)
+                .integer("startAt", "Смещение для пагинации (по умолчанию 0)", false)
                 .str("host", "Хост Jira; иначе хост по умолчанию", false)
                 .build();
         return new McpTool("jira_get_board_backlog", "Бэклог доски Jira.", schema, args ->
-                c.ok(c.jira(args).getBoardBacklog(c.reqStr(args, "boardId"), c.optInt(args, "maxResults", 50))));
+                c.ok(c.jira(args).getBoardBacklog(
+                        c.reqStr(args, "boardId"), c.optInt(args, "startAt", 0), c.optInt(args, "maxResults", 50))));
     }
 }

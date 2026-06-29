@@ -331,9 +331,10 @@ public class ConfluenceClient implements ConfluenceGateway {
 
     /** Список пространств Confluence ({@code key}, {@code name}) — для подсказки «где искать». */
     @SneakyThrows
-    public List<Space> listSpaces(int limit) {
+    public List<Space> listSpaces(int start, int limit) {
         HttpUriRequest httpRequest = RequestBuilder.get()
                 .setUri(urlBase + "/space")
+                .addParameter("start", Integer.toString(Math.max(start, 0)))
                 .addParameter("limit", Integer.toString(limit))
                 .build();
         String body = doRequestAndFailIfNot20x(httpRequest);
