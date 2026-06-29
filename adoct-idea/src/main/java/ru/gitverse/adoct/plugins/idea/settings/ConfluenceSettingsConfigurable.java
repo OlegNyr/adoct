@@ -9,6 +9,8 @@ import com.intellij.ui.table.JBTable;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import ru.gitverse.adoct.bitbucket.BitbucketClient;
+import ru.gitverse.adoct.jira.JiraClient;
 import ru.gitverse.adoct.mcp.AtlassianKind;
 import ru.gitverse.adoct.parser.confluence.ConfluenceClient;
 
@@ -148,6 +150,8 @@ public class ConfluenceSettingsConfigurable implements SearchableConfigurable, C
 
         String host = Objects.toString(tableModel.getValueAt(row, HOST_COLUMN), "").trim();
         String token = Objects.toString(tableModel.getValueAt(row, TOKEN_COLUMN), "").trim();
+        String type = Objects.toString(tableModel.getValueAt(row, TYPE_COLUMN), "").trim();
+        AtlassianKind kind = AtlassianKind.parse(type, AtlassianKind.detect(host));
 
         if (host.isEmpty()) {
             Messages.showErrorDialog(message("settings.Confluence.verifyToken.emptyHost"), message("settings.Confluence.verifyToken.error.title"));
@@ -160,7 +164,7 @@ public class ConfluenceSettingsConfigurable implements SearchableConfigurable, C
 
         verifyTokenButton.setEnabled(false);
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            VerificationResult result = checkToken(host, token);
+            VerificationResult result = checkToken(host, token, kind);
             SwingUtilities.invokeLater(() -> {
                 verifyTokenButton.setEnabled(true);
                 if (result.success()) {
@@ -172,10 +176,13 @@ public class ConfluenceSettingsConfigurable implements SearchableConfigurable, C
         });
     }
 
-    private static VerificationResult checkToken(String host, String token) {
+    private static VerificationResult checkToken(String host, String token, AtlassianKind kind) {
         try {
-            ConfluenceClient client = new ConfluenceClient(host, token);
-            int code = client.verifyToken();
+            int code = switch (kind) {
+                case JIRA -> new JiraClient(host, token).verifyToken();
+                case BITBUCKET -> new BitbucketClient(host, token).verifyToken();
+                case CONFLUENCE -> new ConfluenceClient(host, token).verifyToken();
+            };
             if (code >= 200 && code < 300) {
                 return new VerificationResult(true, message("settings.Confluence.verifyToken.success.message", code));
             }

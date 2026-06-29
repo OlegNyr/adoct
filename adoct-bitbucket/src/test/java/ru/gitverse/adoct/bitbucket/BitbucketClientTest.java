@@ -43,6 +43,15 @@ public class BitbucketClientTest {
     }
 
     @Test
+    public void verifyToken_hitsProjectsAndReturnsStatus() throws Exception {
+        int code = client.verifyToken();
+
+        assertEquals("GET", lastMethod);
+        assertEquals("/rest/api/1.0/projects?limit=1", lastUri);
+        assertEquals(200, code);
+    }
+
+    @Test
     public void searchCode_postsToSearchEndpointWithCodeEntityAndFilters() throws Exception {
         client.searchCode("ДБО", "ABC", "app", 0, 25);
 

@@ -54,6 +54,12 @@ public final class BitbucketClient {
         return postJson("/rest/search/latest/search", payload, "выполнить поиск кода");
     }
 
+    /** Проверка доступности/токена: {@code GET /rest/api/1.0/projects?limit=1} → код HTTP (без тела). */
+    public int verifyToken() throws IOException, InterruptedException {
+        HttpRequest request = baseRequest("/rest/api/1.0/projects?limit=1").GET().build();
+        return http.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
+    }
+
     /** Список проектов: {@code GET /rest/api/1.0/projects?start=&limit=}. */
     public JsonNode listProjects(int start, int limit) throws IOException, InterruptedException {
         return getJson("/rest/api/1.0/projects?" + page(start, limit), "получить список проектов");

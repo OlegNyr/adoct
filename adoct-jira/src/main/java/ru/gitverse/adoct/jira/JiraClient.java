@@ -107,6 +107,12 @@ public final class JiraClient {
         return getJson("/rest/api/2/myself", "получить текущего пользователя");
     }
 
+    /** Проверка доступности/токена: {@code GET /rest/api/2/myself} → код HTTP (без тела). */
+    public int verifyToken() throws IOException, InterruptedException {
+        HttpRequest request = baseRequest("/rest/api/2/myself").GET().build();
+        return http.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
+    }
+
     /** Agile-доски: {@code GET /rest/agile/1.0/board} (опц. фильтр по проекту). */
     public JsonNode listBoards(String projectKeyOrId) throws IOException, InterruptedException {
         String path = "/rest/agile/1.0/board";
