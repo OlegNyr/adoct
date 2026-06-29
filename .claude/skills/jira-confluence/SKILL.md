@@ -1,13 +1,16 @@
 ---
 name: jira-confluence
 description: >
-  Работа с Jira/Confluence в проекте AsciiDocTools: конвертация Confluence↔AsciiDoc, атрибут
-  :confluency-id: и round-trip публикации, какие атрибуты .adoc влияют на публикацию (заголовок,
-  метки, картинки), встроенный MCP-сервер (jira_*/confluence_* тулы, ростер/шаблоны/workflow) и его
-  запуск (плагин / CLI / GraalVM native). Используй ВСЕГДА, когда задача касается экспорта из
-  Confluence, публикации .adoc обратно, значения :confluency-id:, меток страниц или MCP-тулов
-  Jira/Confluence. Триггеры: "confluency-id", "confluence-id", "опубликовать в Confluence",
-  "экспорт из Confluence", "round-trip", "MCP", "jira_", "confluence_", "ростер/шаблоны/workflow".
+  Работа с Jira/Confluence/Bitbucket (Server/DC) в проекте AsciiDocTools: конвертация
+  Confluence↔AsciiDoc, атрибут :confluency-id: и round-trip публикации, какие атрибуты .adoc влияют на
+  публикацию (заголовок, метки, картинки), встроенный MCP-сервер (jira_*/confluence_*/bitbucket_* тулы:
+  задачи и связи, поиск страниц и кода, ростер/шаблоны/workflow по типам задач) и его запуск
+  (плагин / CLI / GraalVM native), маршрутизация по типу хоста и настройки. Используй ВСЕГДА, когда
+  задача касается экспорта из Confluence, публикации .adoc обратно, значения :confluency-id:, меток
+  страниц, связей задач Jira, поиска кода Bitbucket или любых MCP-тулов Jira/Confluence/Bitbucket.
+  Триггеры: "confluency-id", "confluence-id", "опубликовать в Confluence", "экспорт из Confluence",
+  "round-trip", "MCP", "jira_", "confluence_", "bitbucket_", "поиск кода", "pull request", "связать
+  задачи", "ростер/шаблоны/workflow".
 ---
 
 # Jira / Confluence — конвенции AsciiDocTools
@@ -134,13 +137,28 @@ description: >
 - **Оффлайн-пакет дерева:** `confluence_export_tree_to_adoc` (рекурсивно в подпапки).
 - **Сравнение версий:** `confluence_get_page_diff` (с `format=adoc` — тела версий в AsciiDoc).
 
+### Как работать с Bitbucket (Server/DC)
+
+- **Поиск кода:** `bitbucket_search {"query":"…"}` — по содержимому и именам файлов (только дефолтная
+  ветка, потолок ~1000). Сузить — `projectKey`/`repoSlug` (добавляются как модификаторы запроса
+  `project:`/`repo:`; в самой `query` тоже можно `ext:`/`lang:`/`path:`). Требует включённой индексации
+  поиска на сервере — иначе понятная ошибка (REST `/rest/api/1.0/*` работает и без неё).
+- **Навигация:** `bitbucket_list_projects` → `bitbucket_list_repositories {"projectKey":"…"}` →
+  `bitbucket_get_repository`. Файл — `bitbucket_get_file {…,"path":"src/X.java"}` (строки, постранично,
+  опц. `at`=ветка/commit); каталог — `bitbucket_browse`.
+- **Ревью:** `bitbucket_list_pull_requests {…,"state":"OPEN"}`, `bitbucket_get_pull_request`,
+  `bitbucket_get_pull_request_diff`, `bitbucket_get_pull_request_activities` (комментарии+события).
+  Всё **только чтение** (write-операции PR — отдельная итерация).
+- **Пагинация:** у списков `limit` + `start` (offset). Хост-аргумент `host` — если несколько серверов.
+
 ## Запуск MCP
 
-- **Плагин** (по умолчанию): Settings → Tools → *AsciiDocTools MCP* — включение, адрес/порт, статус и
-  URL для копирования, проект Jira / пространство Confluence по умолчанию, **галки групп инструментов**
-  (Jira / Confluence / Bitbucket — выключенная группа не отдаётся по MCP), **ростер команды** и
-  **типы задач** (на каждый тип — многострочный **шаблон** и **диаграмма состояний** PlantUML).
-  Изменения перезапускают сервер.
+- **Плагин** (по умолчанию): группа **Settings → Tools → AsciiDocTools** с тремя страницами —
+  *Серверы Atlassian* (хосты + токены + тип + «по умолчанию»), *MCP-сервер* (включение, адрес/порт,
+  статус и URL для копирования, дефолтные проект Jira / пространство Confluence, **галки групп
+  инструментов** Jira/Confluence/Bitbucket — выключенная группа не отдаётся по MCP, **ростер команды**),
+  *Типы задач* (на каждый тип — многострочный **шаблон** и **диаграмма состояний** PlantUML).
+  Таблицы (серверы, команда) редактируются через диалог Add/Edit. Изменения перезапускают сервер.
 - **CLI** (`:adoct-mcp-cli`): stdio (по умолчанию) или `--http --port N`. Конфиг — `--config <json>`
   и/или env `MCP_*` (`MCP_HOST`/`MCP_TOKEN`/`MCP_KIND`, `MCP_PORT`…); в JSON `templates[]` =
   `{issueType, body, workflow}`. `./gradlew :adoct-mcp-cli:installDist`.
@@ -150,12 +168,13 @@ description: >
 
 ## Настройки подключения
 
-- **Серверы + PAT:** Settings → Tools → *Confluence* (таблица host / тип / по умолчанию / token) —
-  общий список эндпоинтов для экспорта/публикации и MCP. PAT — токен Server/Data Center. **Тип**
-  (Jira / Confluence / Bitbucket) определяется по адресу хоста автоматически и переопределяется
-  вручную; галка **«по умолчанию»** помечает дефолтный хост для своего типа. Вызов тула без явного
-  `host` уходит на дефолтный хост нужного типа (`jira_*` → Jira-хост, `confluence_*` → Confluence-хост)
-  — поэтому при нескольких серверах Jira-вызов не попадёт ошибочно на хост Confluence.
+- **Серверы + PAT:** Settings → Tools → AsciiDocTools → *Серверы Atlassian* (таблица host / тип /
+  по умолчанию / token; правка через диалог Add/Edit) — общий список эндпоинтов для экспорта/публикации
+  и MCP. PAT — токен Server/Data Center. **Тип** (Jira / Confluence / Bitbucket) определяется по адресу
+  хоста автоматически и переопределяется вручную; галка **«по умолчанию»** помечает дефолтный хост для
+  своего типа. Вызов тула без явного `host` уходит на дефолтный хост нужного типа (`jira_*` → Jira,
+  `confluence_*` → Confluence, `bitbucket_*` → Bitbucket) — поэтому при нескольких серверах Jira-вызов
+  не попадёт ошибочно на хост Confluence. Кнопка **«Проверить токен»** бьёт по эндпоинту нужного типа.
 - В `.adoc` указывать абсолютные id/URL; пространство и parent выводятся из целевой страницы публикации.
 
 ## Подводные камни
