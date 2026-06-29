@@ -238,31 +238,84 @@ public class ConfluenceClient implements ConfluenceGateway {
         }
     }
 
-    @SneakyThrows
+    /**
+     * Поиск страниц по заголовку: сначала точное совпадение ({@code title = }), затем нечёткое
+     * ({@code title ~ }). Используется и резолюцией внутренних ссылок — поэтому по телу страниц
+     * не ищет (иначе ссылка могла бы «зарезолвиться» в произвольную страницу с похожим текстом).
+     */
     public List<LinkResult> search(String title, String key) {
-        List<LinkResult> search = search(title, key, false);
-        if (search.isEmpty()) {
-            return search(title, key, true);
-        } else {
-            return search;
+        List<LinkResult> exact = searchCql(cqlTitle(title, "=", key));
+        return exact.isEmpty() ? searchCql(cqlTitle(title, "~", key)) : exact;
+    }
+
+    /**
+     * Поиск по заголовку и тексту: каскад {@code title = } → {@code title ~ } → {@code text ~ }.
+     * Возвращает первую непустую выдачу (заголовочные совпадения приоритетнее текстовых). Подходит
+     * для свободного поиска по содержимому (в отличие от {@link #search(String, String)}). Если
+     * {@code key} пуст — поиск **по всем пространствам** (не ограничивается). В результате — ключ
+     * пространства каждой найденной страницы.
+     */
+    public List<PageHit> searchText(String query, String key) {
+        List<PageHit> exact = searchPages(cqlTitle(query, "=", key));
+        if (!exact.isEmpty()) {
+            return exact;
         }
+        List<PageHit> fuzzy = searchPages(cqlTitle(query, "~", key));
+        return fuzzy.isEmpty() ? searchPages(cqlField("text", query, key)) : fuzzy;
     }
 
     @SneakyThrows
-    private List<LinkResult> search(String title, String key, boolean isLike) {
-        String searchTitle = title.replace("\"", "\\\"");
-        String cql = "title %s \"%s\"".formatted(isLike ? "~" : "=", searchTitle);
-        if (StringUtils.isNotEmpty(key)) {
-            cql = cql + " and space.key = \"%s\"".formatted(key);
-        }
+    private List<PageHit> searchPages(String cql) {
         HttpUriRequest httpRequest = RequestBuilder.get()
                 .setUri(urlBase + "/content/search")
                 .addParameter("cql", cql)
-                //    .addParameter("expand", "version")
+                .addParameter("expand", "space")
                 .build();
-        System.out.println("Searche title " + httpRequest);
+        log.debug("Confluence search: {}", cql);
         String body = doRequestAndFailIfNot20x(httpRequest);
-        System.out.println(body);
+        if (body == null) {
+            return List.of();
+        }
+        List<PageHit> hits = new ArrayList<>();
+        for (com.fasterxml.jackson.databind.JsonNode r : ObjectMapperExt.INSTANT.readTree(body).path("results")) {
+            String webui = r.path("_links").path("webui").asText(null);
+            if (webui != null) {
+                hits.add(new PageHit(r.path("title").asText(null),
+                        r.path("space").path("key").asText(null), host + webui));
+            }
+        }
+        return hits;
+    }
+
+    /** Найденная страница: заголовок, ключ пространства и веб-ссылка. */
+    public record PageHit(String title, String space, String url) {
+    }
+
+    private String cqlTitle(String query, String op, String key) {
+        return cqlField("title", op, query, key);
+    }
+
+    private String cqlField(String field, String query, String key) {
+        return cqlField(field, "~", query, key);
+    }
+
+    private String cqlField(String field, String op, String query, String key) {
+        String escaped = query.replace("\"", "\\\"");
+        String cql = "%s %s \"%s\"".formatted(field, op, escaped);
+        if (StringUtils.isNotEmpty(key)) {
+            cql = cql + " and space.key = \"%s\"".formatted(key);
+        }
+        return cql;
+    }
+
+    @SneakyThrows
+    private List<LinkResult> searchCql(String cql) {
+        HttpUriRequest httpRequest = RequestBuilder.get()
+                .setUri(urlBase + "/content/search")
+                .addParameter("cql", cql)
+                .build();
+        log.debug("Confluence search: {}", cql);
+        String body = doRequestAndFailIfNot20x(httpRequest);
         ConfluenceSearchResult searchResult = ObjectMapperExt.INSTANT.readValue(body, ConfluenceSearchResult.class);
         return searchResult.getResults().stream()
                 .map(r -> Optional.of(r)
@@ -273,9 +326,32 @@ public class ConfluenceClient implements ConfluenceGateway {
                 )
                 .filter(Optional::isPresent)
                 .map(Optional::get)
-
                 .toList();
+    }
 
+    /** Список пространств Confluence ({@code key}, {@code name}) — для подсказки «где искать». */
+    @SneakyThrows
+    public List<Space> listSpaces(int limit) {
+        HttpUriRequest httpRequest = RequestBuilder.get()
+                .setUri(urlBase + "/space")
+                .addParameter("limit", Integer.toString(limit))
+                .build();
+        String body = doRequestAndFailIfNot20x(httpRequest);
+        if (body == null) {
+            return List.of();
+        }
+        List<Space> spaces = new ArrayList<>();
+        for (com.fasterxml.jackson.databind.JsonNode node : ObjectMapperExt.INSTANT.readTree(body).path("results")) {
+            String key = node.path("key").asText(null);
+            if (key != null) {
+                spaces.add(new Space(key, node.path("name").asText(null)));
+            }
+        }
+        return spaces;
+    }
+
+    /** Краткое описание пространства Confluence. */
+    public record Space(String key, String name) {
     }
 
     @SneakyThrows

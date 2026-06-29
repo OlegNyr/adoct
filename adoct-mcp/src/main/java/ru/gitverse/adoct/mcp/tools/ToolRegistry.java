@@ -12,12 +12,14 @@ import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceExportTreeToAdoc;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceFindPage;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceGetAttachments;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceGetChildPages;
+import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceGetDefaultSpace;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceGetComments;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceGetLabels;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceGetPage;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceGetPageDiff;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceGetPageHistory;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceGetUser;
+import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceListSpaces;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceMovePage;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluencePublishAdoc;
 import ru.gitverse.adoct.mcp.tools.confluence.ConfluenceReplyToComment;
@@ -134,6 +136,8 @@ public final class ToolRegistry {
                 // ---- Confluence ----
                 new ConfluenceGetPage(),
                 new ConfluenceSearch(),
+                new ConfluenceListSpaces(),
+                new ConfluenceGetDefaultSpace(),
                 new ConfluenceFindPage(),
                 new ConfluenceGetChildPages(),
                 new ConfluenceGetUser(),

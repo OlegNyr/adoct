@@ -61,7 +61,7 @@ description: >
 ## MCP-сервер (Jira + Confluence из ассистента)
 
 Встроенный MCP-сервер (модуль `:adoct-mcp`) поднимается плагином на старте IDE (HTTP, JSON-RPC).
-**62 тула** (Jira + Confluence), персона-промпт `product_owner`. Аутентификация — **PAT** (Server/DC).
+**64 тула** (Jira + Confluence), персона-промпт `product_owner`. Аутентификация — **PAT** (Server/DC).
 
 Шпаргалка по группам тулов:
 - **Jira задачи/agile:** `jira_search` (JQL), `jira_get_issue`, `jira_create_issue`,
@@ -70,9 +70,12 @@ description: >
 - **Jira команда/шаблоны/workflow:** `jira_list_team` (ростер), `jira_list_assignable_users`
   (живой список), `jira_assign_issue`, `jira_list_templates` (свободный текст — модель сама собирает
   `jira_create_issue`), `jira_get_workflow` (PlantUML state), `jira_get_project_statuses`.
-- **Confluence:** `confluence_search` (CQL), `confluence_get_page` (есть `format=adoc` и `fast=true` —
-  отдаёт страницу в AsciiDoc, in-memory, без скачивания вложений), `confluence_get_page_diff`
-  (`format=adoc`), создание/удаление/перемещение, комментарии, метки, вложения.
+- **Confluence:** `confluence_search` (CQL-каскад: ищет по **заголовку и тексту** — `title=`, затем
+  `title~`, затем `text~`; **по умолчанию по всем пространствам**, `spaceKey` ограничивает только если
+  задан; в результатах — ключ пространства), `confluence_list_spaces` / `confluence_get_default_space`
+  (где и в каком пространстве идёт поиск), `confluence_get_page` (есть `format=adoc` и `fast=true` — отдаёт страницу
+  в AsciiDoc, in-memory, без скачивания вложений), `confluence_get_page_diff` (`format=adoc`),
+  создание/удаление/перемещение, комментарии, метки, вложения.
 - **Движок ⭐:** `confluence_export_tree_to_adoc`, `confluence_publish_adoc`.
 
 ## Рабочие сценарии (playbooks)
@@ -105,7 +108,10 @@ description: >
 
 ### Как работать с Confluence
 
-- **Поиск/чтение:** `confluence_search` (CQL), `confluence_get_page`. Для подачи страницы в контекст —
+- **Поиск/чтение:** `confluence_search` (по заголовку и тексту, по всем пространствам; передай
+  `spaceKey`, чтобы сузить — принимает ключ или URL; в выдаче — пространство каждой страницы),
+  `confluence_get_page`. Где искать по умолчанию — `confluence_get_default_space` (хост + дефолтное
+  пространство) или `confluence_list_spaces`. Для подачи страницы в контекст —
   `confluence_get_page format=adoc fast=true` (in-memory, без скачивания вложений, один REST-запрос).
 - **Правка с round-trip:** прочитал → отредактировал `.adoc` → `confluence_publish_adoc` (связь по
   `:confluency-id:`, см. выше). Точечно — `confluence_add_comment`, `confluence_add_labels`,
@@ -121,13 +127,17 @@ description: >
 - **CLI** (`:adoct-mcp-cli`): stdio (по умолчанию) или `--http --port N`. Конфиг — `--config <json>`
   и/или env `MCP_*` (`MCP_HOST`/`MCP_TOKEN`, `MCP_PORT`…). `./gradlew :adoct-mcp-cli:installDist`.
 - **GraalVM native:** `./gradlew :adoct-mcp-cli:nativeCompile --no-configuration-cache` → бинарь
-  `build/native/nativeCompile/adoct-mcp` (мгновенный старт; **61 тул** — без `confluence_publish_adoc`,
+  `build/native/nativeCompile/adoct-mcp` (мгновенный старт; **63 тула** — без `confluence_publish_adoc`,
   т.к. asciidoctorj/JRuby несовместим с native; публикуй через плагин/JVM-CLI).
 
 ## Настройки подключения
 
-- **Серверы + PAT:** Settings → Tools → *Confluence* (таблица host/token) — общий список эндпоинтов
-  для экспорта/публикации и MCP. PAT — токен Server/Data Center.
+- **Серверы + PAT:** Settings → Tools → *Confluence* (таблица host / тип / по умолчанию / token) —
+  общий список эндпоинтов для экспорта/публикации и MCP. PAT — токен Server/Data Center. **Тип**
+  (Jira / Confluence / Bitbucket) определяется по адресу хоста автоматически и переопределяется
+  вручную; галка **«по умолчанию»** помечает дефолтный хост для своего типа. Вызов тула без явного
+  `host` уходит на дефолтный хост нужного типа (`jira_*` → Jira-хост, `confluence_*` → Confluence-хост)
+  — поэтому при нескольких серверах Jira-вызов не попадёт ошибочно на хост Confluence.
 - В `.adoc` указывать абсолютные id/URL; пространство и parent выводятся из целевой страницы публикации.
 
 ## Подводные камни

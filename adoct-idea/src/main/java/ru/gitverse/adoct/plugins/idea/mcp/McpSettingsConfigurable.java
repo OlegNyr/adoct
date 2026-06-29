@@ -78,6 +78,7 @@ public final class McpSettingsConfigurable implements Configurable {
                 .addLabeledComponent("Порт:", port)
                 .addLabeledComponent("Проект Jira по умолчанию:", defaultJiraProject)
                 .addLabeledComponent("Пространство Confluence по умолчанию:", defaultConfluenceSpace)
+                .addTooltip("Можно вставить ключ (PLCHAT) или полный URL страницы — ключ извлечётся автоматически")
                 .addLabeledComponent("Команда (username / имя / роль):", teamPanel)
                 .addLabeledComponent("Шаблоны задач (имя / текст):", templatesPanel)
                 .addLabeledComponent("Состояния задач (PlantUML state):", new JBScrollPane(workflowArea))

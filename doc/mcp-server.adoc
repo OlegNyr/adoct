@@ -40,7 +40,7 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
   `AppLifecycleListener`, off-EDT; перезапуск из настроек.
 * Аутентификация Atlassian — *PAT* (`Authorization: Bearer`), цель — *Server/Data Center*.
 
-== Каталог тулов (62) + промпт
+== Каталог тулов (64) + промпт
 
 *Jira — задачи:* `jira_get_issue`, `jira_search` (JQL), `jira_get_transitions`,
 `jira_create_issue`, `jira_update_issue`, `jira_transition_issue`, `jira_delete_issue`,
@@ -62,7 +62,10 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
 `jira_list_assignable_users` (живой список из Jira), `jira_assign_issue`, `jira_list_templates`
 (свободный текст для LLM), `jira_get_workflow` (PlantUML state из настроек), `jira_get_project_statuses`.
 
-*Confluence — чтение:* `confluence_get_page`, `confluence_search` (CQL), `confluence_find_page`,
+*Confluence — чтение:* `confluence_get_page`, `confluence_search` (по заголовку и тексту:
+`title=`→`title~`→`text~`; по умолчанию по всем пространствам, в результатах — ключ пространства),
+`confluence_list_spaces`, `confluence_get_default_space`,
+`confluence_find_page`,
 `confluence_get_child_pages`, `confluence_get_user`, `confluence_get_page_history`,
 `confluence_get_page_diff`, `confluence_get_comments`, `confluence_get_labels`,
 `confluence_get_attachments`.
@@ -123,7 +126,7 @@ JVM-запуск: `./gradlew :adoct-mcp-cli:installDist`, затем `build/inst
 Нативный бинарь стартует мгновенно — поэтому stdio-режим практичен (исходно от stdio отказывались
 именно из-за медленного старта JVM). Native-вход — `McpCliNative`, он использует
 `ToolRegistry.coreTools()` *без* `confluence_publish_adoc`: тот тянет asciidoctorj/JRuby, несовместимый
-с native-image. В нативном бинаре **61 тул**; для публикации AsciiDoc используйте JVM-режим или плагин.
+с native-image. В нативном бинаре **63 тула**; для публикации AsciiDoc используйте JVM-режим или плагин.
 
 Сборка: `./gradlew :adoct-mcp-cli:nativeCompile --no-configuration-cache`
 (флаг — из-за известного конфликта плагина GraalVM с Gradle configuration-cache). Требуется GraalVM
@@ -132,7 +135,7 @@ JVM-запуск: `./gradlew :adoct-mcp-cli:installDist`, затем `build/inst
 (~51 МБ, холодный старт ~30 мс).
 
 Чтобы native собирался, asciidoctorj/JRuby-стек исключён из `nativeImageClasspath` (его charset-провайдер
-`jcodings` иначе форсит build-time-инициализацию). В JVM-режиме CLI он остаётся — там доступны все 62 тула.
+`jcodings` иначе форсит build-time-инициализацию). В JVM-режиме CLI он остаётся — там доступны все 64 тула.
 
 == Сравнение с проектами на GitHub
 
@@ -147,7 +150,7 @@ JVM-запуск: `./gradlew :adoct-mcp-cli:installDist`, затем `build/inst
 | Транспорт | HTTP (свой JSON-RPC, без SDK) | STDIO / SSE / HTTP | Remote HTTP (SSE)
 | Цель | *Server/Data Center* | Cloud *и* Server/DC | Только *Cloud*
 | Аутентификация | PAT (из настроек IDE) | PAT / Basic / OAuth | OAuth 2.1
-| Кол-во тулов | *62* (41 Jira + 21 Confluence) | *~72* (52 Jira + 20 Confluence) | много (Jira/Confluence/JSM/Bitbucket/Compass)
+| Кол-во тулов | *64* (41 Jira + 23 Confluence) | *~72* (52 Jira + 20 Confluence) | много (Jira/Confluence/JSM/Bitbucket/Compass)
 | Продукты | Jira + Confluence | Jira + Confluence | + JSM, Bitbucket, Compass
 | Экспорт/публикация AsciiDoc | ✅ *уникально* | ❌ | ❌
 | Персона-промпт | ✅ `product_owner` | ❌ | ❌
