@@ -41,6 +41,9 @@ public final class ToolContext {
     private static final Pattern DISPLAY = Pattern.compile("/display/([^/?#]+)/([^/?#]+)");
     private static final Pattern SPACE_PATH = Pattern.compile("/(?:display|spaces)/([^/?#]+)");
     private static final Pattern SPACE_QUERY = Pattern.compile("[?&]spaceKey=([^&#]+)");
+    private static final Pattern PROJECT_PATH = Pattern.compile("/(?:projects|browse)/([^/?#]+)");
+    private static final Pattern PROJECT_QUERY = Pattern.compile("[?&]projectKey=([^&#]+)");
+    private static final Pattern ISSUE_KEY = Pattern.compile("([A-Za-z][A-Za-z0-9_]*)-\\d+");
 
     private final EndpointSupplier endpoints;
     private final ObjectMapper mapper = ObjectMapperExt.INSTANT;
@@ -89,9 +92,37 @@ public final class ToolContext {
         return new ru.gitverse.adoct.generate.confluence.ConfluenceClient(ep.host(), ep.token());
     }
 
-    /** Дефолтный проект Jira из настроек (если задан). */
+    /**
+     * Дефолтный проект Jira из настроек (если задан). В настройках значение можно задавать как полный
+     * URL/путь задачи или проекта — отсюда извлекается только ключ проекта (см. {@link #projectKeyOf}).
+     */
     public Optional<String> defaultJiraProject() {
-        return endpoints.defaultJiraProject();
+        return endpoints.defaultJiraProject().map(ToolContext::projectKeyOf).filter(s -> !s.isBlank());
+    }
+
+    /**
+     * Извлекает ключ проекта Jira из произвольной формы: полного URL/пути
+     * ({@code …/browse/ABC-123}, {@code …/projects/ABC/…}, {@code …?projectKey=ABC}), ключа задачи
+     * ({@code ABC-123} → {@code ABC}) или голого ключа проекта.
+     */
+    public static String projectKeyOf(String value) {
+        if (value == null) {
+            return "";
+        }
+        String s = value.trim();
+        if (s.isEmpty()) {
+            return "";
+        }
+        String candidate = s;
+        Matcher q = PROJECT_QUERY.matcher(s);
+        Matcher p = PROJECT_PATH.matcher(s);
+        if (q.find()) {
+            candidate = URLDecoder.decode(q.group(1), StandardCharsets.UTF_8);
+        } else if (p.find()) {
+            candidate = URLDecoder.decode(p.group(1), StandardCharsets.UTF_8);
+        }
+        Matcher issue = ISSUE_KEY.matcher(candidate);
+        return issue.matches() ? issue.group(1) : candidate;
     }
 
     /**
@@ -130,23 +161,18 @@ public final class ToolContext {
         return endpoints.team();
     }
 
-    /** Шаблоны задач из настроек. */
+    /** Конфигурация типов задач (шаблон + состояния) из настроек. */
     public List<Template> templates() {
         return endpoints.templates();
     }
 
-    /** PlantUML-диаграмма состояний задач из настроек. */
-    public String workflowDiagram() {
-        return endpoints.workflowDiagram();
-    }
-
-    /** Проект Jira: из аргумента {@code projectKey} или дефолтный; ошибка, если ни того ни другого. */
+    /** Проект Jira: из аргумента {@code projectKey} (ключ или URL) или дефолтный; ошибка, если ни того ни другого. */
     public String requireProject(JsonNode args) {
         String project = firstNonBlank(text(args, "projectKey"), defaultJiraProject().orElse(null));
         if (project == null || project.isBlank()) {
             throw new IllegalArgumentException("Не задан projectKey и не настроен проект Jira по умолчанию");
         }
-        return project;
+        return projectKeyOf(project);
     }
 
     /** Пространство Confluence: из аргумента {@code spaceKey} или дефолтное; ошибка, если ни того ни другого. */

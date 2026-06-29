@@ -93,10 +93,12 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
 ### Командное управление
 
 В настройках (Settings → Tools → AsciiDocTools MCP) задаются: **ростер команды** (таблица username/имя/роль →
-`jira_list_team`; живой список — `jira_list_assignable_users`), **шаблоны задач** (имя + *свободный текст* →
-`jira_list_templates`; вызов `jira_create_issue` модель собирает сама по тексту шаблона) и **состояния задач**
-(диаграмма *PlantUML state* → `jira_get_workflow`; живые статусы — `jira_get_project_statuses`). Назначение —
-`jira_assign_issue`. Изменения настроек перезапускают сервер и сразу видны тулам.
+`jira_list_team`; живой список — `jira_list_assignable_users`) и **типы задач** — на каждый тип задаётся
+многострочный **шаблон** (*свободный текст* → `jira_list_templates`; вызов `jira_create_issue` модель собирает
+сама по тексту шаблона) и **диаграмма состояний** (*PlantUML state* → `jira_get_workflow`; и шаблон, и
+состояния привязаны к типу задачи). Живые статусы — `jira_get_project_statuses`, назначение —
+`jira_assign_issue`. Экран также показывает URL для подключения и статус сервера (запущен/остановлен).
+Изменения настроек перезапускают сервер и сразу видны тулам.
 
 ## CLI и GraalVM native
 

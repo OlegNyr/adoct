@@ -27,14 +27,9 @@ public interface EndpointSupplier {
         return List.of();
     }
 
-    /** Шаблоны задач (свободный текст; интерпретирует LLM). */
+    /** Конфигурация типов задач: шаблон + диаграмма состояний на каждый тип (свободный текст для LLM). */
     default List<Template> templates() {
         return List.of();
-    }
-
-    /** Диаграмма состояний задач в формате PlantUML (как есть, для LLM). */
-    default String workflowDiagram() {
-        return "";
     }
 
     /** Точка по умолчанию — первая сконфигурированная (если есть). */

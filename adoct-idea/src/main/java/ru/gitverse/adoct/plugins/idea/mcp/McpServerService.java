@@ -28,6 +28,17 @@ public final class McpServerService implements Disposable {
         return ApplicationManager.getApplication().getService(McpServerService.class);
     }
 
+    /** Поднят ли сервер (успешно стартовал и не закрыт). */
+    public boolean isRunning() {
+        return server != null;
+    }
+
+    /** Адрес MCP-эндпоинта по текущим настройкам (для копирования). */
+    public static String endpointUrl() {
+        McpSettingsService s = McpSettingsService.getInstance();
+        return "http://" + s.getBindHost() + ":" + s.getPort() + "/mcp";
+    }
+
     /** Идемпотентный запуск сервера в фоновом потоке (если включён в настройках). */
     public void startOnce() {
         McpSettingsService settings = McpSettingsService.getInstance();

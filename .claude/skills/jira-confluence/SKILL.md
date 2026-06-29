@@ -68,8 +68,10 @@ description: >
   `jira_update_issue`, `jira_get_transitions`+`jira_transition_issue`, `jira_add_comment`,
   спринты/доски (`jira_list_sprints`, `jira_get_board_backlog`…), связи/worklog/watchers.
 - **Jira команда/шаблоны/workflow:** `jira_list_team` (ростер), `jira_list_assignable_users`
-  (живой список), `jira_assign_issue`, `jira_list_templates` (свободный текст — модель сама собирает
-  `jira_create_issue`), `jira_get_workflow` (PlantUML state), `jira_get_project_statuses`.
+  (живой список), `jira_assign_issue`, `jira_list_templates` (шаблоны **по типам задач** —
+  `{issueType, template}`, свободный текст, модель сама собирает `jira_create_issue`),
+  `jira_get_workflow` (диаграммы состояний **по типам задач** — `{issueType, plantuml}`, опц. фильтр
+  `issueType`), `jira_get_project_statuses`.
 - **Confluence:** `confluence_search` (CQL-каскад: ищет по **заголовку и тексту** — `title=`, затем
   `title~`, затем `text~`; **по умолчанию по всем пространствам**, `spaceKey` ограничивает только если
   задан; в результатах — ключ пространства), `confluence_list_spaces` / `confluence_get_default_space`
@@ -84,13 +86,14 @@ description: >
 
 Шаблоны и ростер задаются в настройках; **перед** созданием задачи возьми их и собери поля сам:
 
-1. **Шаблоны:** `jira_list_templates` → возьми текст нужного шаблона (Story / Bug / Spike …). Сервер
-   шаблон **не парсит** — это свободный текст; ты сам извлекаешь из него issueType, заготовку summary,
-   тело description (чек-лист / Definition of Done), метки и т.п.
+1. **Шаблоны:** `jira_list_templates` → возьми шаблон нужного типа задачи (`{issueType, template}`:
+   Story / Bug / Spike …). Сервер шаблон **не парсит** — это свободный текст; ты сам извлекаешь из него
+   заготовку summary, тело description (чек-лист / Definition of Done), метки и т.п.
 2. **Команда:** `jira_list_team` (ростер: username / имя / роль) — кого можно назначить; либо
    `jira_list_assignable_users` (живой список assignable из Jira по проекту).
-3. **Состояния (опц.):** `jira_get_workflow` (диаграмма PlantUML, как принято у команды) и/или
-   `jira_get_project_statuses` (живые статусы по типам задач) — чтобы понимать, куда задача поедет.
+3. **Состояния (опц.):** `jira_get_workflow` (диаграмма PlantUML **для типа задачи**, как принято у
+   команды) и/или `jira_get_project_statuses` (живые статусы по типам задач) — чтобы понимать, куда
+   задача поедет.
 4. **Создание:** `jira_create_issue` (projectKey подставится из настроек, если не задан; issueType,
    summary, description — по шаблону; при необходимости labels / priority / components).
 5. **Назначение:** `jira_assign_issue <issueKey> <username>` — username из ростера (п.2).
@@ -121,11 +124,13 @@ description: >
 
 ## Запуск MCP
 
-- **Плагин** (по умолчанию): Settings → Tools → *AsciiDocTools MCP* — включение, адрес/порт,
-  проект Jira / пространство Confluence по умолчанию, **ростер команды**, **шаблоны задач** (свободный
-  текст), **диаграмма состояний** (PlantUML). Изменения перезапускают сервер.
+- **Плагин** (по умолчанию): Settings → Tools → *AsciiDocTools MCP* — включение, адрес/порт, статус и
+  URL для копирования, проект Jira / пространство Confluence по умолчанию, **ростер команды** и
+  **типы задач** (на каждый тип — многострочный **шаблон** и **диаграмма состояний** PlantUML).
+  Изменения перезапускают сервер.
 - **CLI** (`:adoct-mcp-cli`): stdio (по умолчанию) или `--http --port N`. Конфиг — `--config <json>`
-  и/или env `MCP_*` (`MCP_HOST`/`MCP_TOKEN`, `MCP_PORT`…). `./gradlew :adoct-mcp-cli:installDist`.
+  и/или env `MCP_*` (`MCP_HOST`/`MCP_TOKEN`/`MCP_KIND`, `MCP_PORT`…); в JSON `templates[]` =
+  `{issueType, body, workflow}`. `./gradlew :adoct-mcp-cli:installDist`.
 - **GraalVM native:** `./gradlew :adoct-mcp-cli:nativeCompile --no-configuration-cache` → бинарь
   `build/native/nativeCompile/adoct-mcp` (мгновенный старт; **63 тула** — без `confluence_publish_adoc`,
   т.к. asciidoctorj/JRuby несовместим с native; публикуй через плагин/JVM-CLI).

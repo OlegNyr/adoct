@@ -29,7 +29,6 @@ final class CliConfig {
     final List<AtlassianEndpoint> endpoints = new ArrayList<>();
     final List<TeamMember> team = new ArrayList<>();
     final List<Template> templates = new ArrayList<>();
-    String workflowDiagram = "";
 
     static CliConfig load(String[] args) throws Exception {
         CliConfig c = new CliConfig();
@@ -52,7 +51,6 @@ final class CliConfig {
         }
         defaultJiraProject = text(root, "defaultJiraProject", defaultJiraProject);
         defaultConfluenceSpace = text(root, "defaultConfluenceSpace", defaultConfluenceSpace);
-        workflowDiagram = text(root, "workflowDiagram", workflowDiagram);
 
         for (JsonNode e : root.path("endpoints")) {
             String host = e.path("host").asText("");
@@ -69,9 +67,9 @@ final class CliConfig {
             }
         }
         for (JsonNode t : root.path("templates")) {
-            String name = t.path("name").asText("");
-            if (!name.isBlank()) {
-                templates.add(new Template(name, t.path("body").asText("")));
+            String issueType = t.path("issueType").asText(t.path("name").asText(""));
+            if (!issueType.isBlank()) {
+                templates.add(new Template(issueType, t.path("body").asText(""), t.path("workflow").asText("")));
             }
         }
     }

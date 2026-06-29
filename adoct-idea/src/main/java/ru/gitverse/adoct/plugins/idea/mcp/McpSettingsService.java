@@ -62,14 +62,25 @@ public final class McpSettingsService implements PersistentStateComponent<McpSet
         return state.team == null ? new ArrayList<>() : new ArrayList<>(state.team);
     }
 
-    /** Шаблоны задач (копия). */
+    /** Конфигурация типов задач (шаблон + состояния), копия. */
     public List<TemplateState> getTemplates() {
         return state.templates == null ? new ArrayList<>() : new ArrayList<>(state.templates);
     }
 
-    /** Диаграмма состояний задач (PlantUML); пусто = не задана. */
-    public String getWorkflowDiagram() {
-        return state.workflowDiagram == null ? "" : state.workflowDiagram;
+    /**
+     * Снимок текущего состояния — основа для частичного сохранения: страница настроек берёт снимок,
+     * переопределяет только свой срез и зовёт {@link #loadState}, не затирая поля других страниц.
+     */
+    public StateData snapshot() {
+        StateData copy = new StateData();
+        copy.enabled = state.enabled;
+        copy.bindHost = getBindHost();
+        copy.port = getPort();
+        copy.defaultJiraProject = getDefaultJiraProject();
+        copy.defaultConfluenceSpace = getDefaultConfluenceSpace();
+        copy.team = getTeam();
+        copy.templates = getTemplates();
+        return copy;
     }
 
     public static final class StateData {
@@ -80,7 +91,6 @@ public final class McpSettingsService implements PersistentStateComponent<McpSet
         public String defaultConfluenceSpace = "";
         public List<TeamMemberState> team = new ArrayList<>();
         public List<TemplateState> templates = new ArrayList<>();
-        public String workflowDiagram = "";
     }
 
     /** Участник команды для XML-сериализации (нужен no-arg конструктор). */
@@ -99,17 +109,19 @@ public final class McpSettingsService implements PersistentStateComponent<McpSet
         }
     }
 
-    /** Шаблон задачи (имя + свободный текст) для XML-сериализации. */
+    /** Конфигурация типа задачи (тип + шаблон + состояния PlantUML) для XML-сериализации. */
     public static final class TemplateState {
-        public String name = "";
+        public String issueType = "";
         public String body = "";
+        public String workflow = "";
 
         public TemplateState() {
         }
 
-        public TemplateState(String name, String body) {
-            this.name = name;
+        public TemplateState(String issueType, String body, String workflow) {
+            this.issueType = issueType;
             this.body = body;
+            this.workflow = workflow;
         }
     }
 }

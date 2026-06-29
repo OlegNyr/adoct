@@ -20,8 +20,7 @@ public class CliConfigTest {
                   "defaultJiraProject": "ABC", "defaultConfluenceSpace": "DEV",
                   "endpoints": [{"host": "http://h", "token": "t"}],
                   "team": [{"username": "u", "displayName": "U", "role": "Dev"}],
-                  "templates": [{"name": "Story", "body": "text"}],
-                  "workflowDiagram": "@startuml"
+                  "templates": [{"issueType": "Story", "body": "text", "workflow": "@startuml"}]
                 }""");
         try {
             CliConfig c = CliConfig.load(new String[] {"--config", file.toString(), "--port", "9999"});
@@ -33,8 +32,8 @@ public class CliConfigTest {
             assertEquals(1, c.team.size());
             assertEquals("u", c.team.get(0).username());
             assertEquals(1, c.templates.size());
-            assertEquals("Story", c.templates.get(0).name());
-            assertEquals("@startuml", c.workflowDiagram);
+            assertEquals("Story", c.templates.get(0).issueType());
+            assertEquals("@startuml", c.templates.get(0).workflow());
         } finally {
             Files.deleteIfExists(file);
         }

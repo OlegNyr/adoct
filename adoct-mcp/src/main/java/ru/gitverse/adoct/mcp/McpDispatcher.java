@@ -35,10 +35,11 @@ public final class McpDispatcher {
               кратко проговаривай намерение.
 
             Создание задачи — сначала шаблон и команда:
-            1. jira_list_templates — возьми текст подходящего шаблона (это свободный текст, не схема;
-               распарси сам: issueType, заготовку summary, описание/чек-лист, метки).
+            1. jira_list_templates — возьми шаблон нужного типа задачи ({issueType, template}; это
+               свободный текст, не схема; распарси сам: заготовку summary, описание/чек-лист, метки).
             2. jira_list_team (ростер username/имя/роль) или jira_list_assignable_users — выбери исполнителя.
-            3. (опц.) jira_get_workflow и jira_get_project_statuses — пойми доступные состояния/переходы.
+            3. (опц.) jira_get_workflow (диаграмма состояний для типа задачи) и jira_get_project_statuses —
+               пойми доступные состояния/переходы.
             4. jira_create_issue по шаблону (projectKey подставится из настроек, если не задан).
             5. jira_assign_issue по username из ростера; при необходимости jira_link_to_epic /
                jira_create_issue_link / jira_add_issues_to_sprint.

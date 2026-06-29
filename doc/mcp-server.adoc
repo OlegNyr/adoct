@@ -100,12 +100,14 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
 
 * *Ростер команды* — таблица username / имя / роль; отдаётся `jira_list_team` для привязки задач к людям
   (живой список из Jira — `jira_list_assignable_users`).
-* *Шаблоны задач* — таблица имя / *свободный текст*; `jira_list_templates` возвращает их как есть, а
-  вызов `jira_create_issue` ассистент собирает сам по тексту шаблона (сервер шаблоны не интерпретирует).
-* *Состояния задач* — диаграмма *PlantUML state*; `jira_get_workflow` отдаёт её текстом
-  (плюс `jira_get_project_statuses` — живые статусы из Jira).
+* *Типы задач* — мастер-деталь: список типов (Story / Bug / Task…), а на каждый тип — многострочный
+  *шаблон* и диаграмма *состояний* (PlantUML state). И шаблон, и состояния привязаны к типу задачи.
+  `jira_list_templates` отдаёт шаблоны (`{issueType, template}`), `jira_get_workflow` — диаграммы
+  (`{issueType, plantuml}`); вызов `jira_create_issue` ассистент собирает сам по тексту шаблона (сервер
+  шаблоны не интерпретирует). Плюс `jira_get_project_statuses` — живые статусы из Jira.
 
-Назначение — `jira_assign_issue`. Изменения в настройках перезапускают сервер и сразу видны тулам.
+Назначение — `jira_assign_issue`. Экран также показывает URL для подключения и статус сервера
+(запущен / остановлен). Изменения в настройках перезапускают сервер и сразу видны тулам.
 
 == Запуск из командной строки (CLI) и GraalVM native
 
@@ -116,8 +118,9 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
 * *HTTP* — `--http [--port N] [--bind H]` (как встроенный сервер плагина).
 
 Конфигурация (по возрастанию приоритета): JSON-файл `--config <file>`, переменные окружения `MCP_*`
-(`MCP_HOST`/`MCP_TOKEN` — быстрый одно-эндпоинтный режим, плюс `MCP_PORT`, `MCP_BIND`, `MCP_TRANSPORT`,
-`MCP_JIRA_PROJECT`, `MCP_CONFLUENCE_SPACE`), аргументы CLI. Файл задаёт `endpoints`/`team`/`templates`/`workflowDiagram`.
+(`MCP_HOST`/`MCP_TOKEN`/`MCP_KIND` — быстрый одно-эндпоинтный режим, плюс `MCP_PORT`, `MCP_BIND`,
+`MCP_TRANSPORT`, `MCP_JIRA_PROJECT`, `MCP_CONFLUENCE_SPACE`), аргументы CLI. Файл задаёт
+`endpoints` (с `kind`/`default`), `team`, `templates` (`{issueType, body, workflow}`).
 
 JVM-запуск: `./gradlew :adoct-mcp-cli:installDist`, затем `build/install/adoct-mcp/bin/adoct-mcp`.
 

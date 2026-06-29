@@ -42,11 +42,6 @@ final class ConfigEndpointSupplier implements EndpointSupplier {
         return config.templates;
     }
 
-    @Override
-    public String workflowDiagram() {
-        return config.workflowDiagram;
-    }
-
     private static Optional<String> nonBlank(String value) {
         return value == null || value.isBlank() ? Optional.empty() : Optional.of(value);
     }

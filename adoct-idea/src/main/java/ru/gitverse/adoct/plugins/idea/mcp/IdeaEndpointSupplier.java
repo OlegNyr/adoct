@@ -47,14 +47,9 @@ public final class IdeaEndpointSupplier implements EndpointSupplier {
     @Override
     public List<Template> templates() {
         return McpSettingsService.getInstance().getTemplates().stream()
-                .filter(t -> t.name != null && !t.name.isBlank())
-                .map(t -> new Template(t.name, t.body))
+                .filter(t -> t.issueType != null && !t.issueType.isBlank())
+                .map(t -> new Template(t.issueType, t.body, t.workflow))
                 .toList();
-    }
-
-    @Override
-    public String workflowDiagram() {
-        return McpSettingsService.getInstance().getWorkflowDiagram();
     }
 
     private static Optional<String> nonBlank(String value) {

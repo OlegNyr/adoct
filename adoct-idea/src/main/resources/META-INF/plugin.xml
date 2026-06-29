@@ -19,15 +19,25 @@
                     icon="AllIcons.Actions.Upload"
                     showStripeButton="false"/>
         <applicationConfigurable
-                id="ru.gitverse.adoct.plugins.idea.settings.confluence"
+                id="adoct.settings"
                 parentId="tools"
-                displayName="AsciiDocTools Confluence"
+                displayName="AsciiDocTools"
+                instance="ru.gitverse.adoct.plugins.idea.settings.AdoctSettingsConfigurable"/>
+        <applicationConfigurable
+                id="ru.gitverse.adoct.plugins.idea.settings.confluence"
+                parentId="adoct.settings"
+                displayName="Серверы Atlassian"
                 instance="ru.gitverse.adoct.plugins.idea.settings.ConfluenceSettingsConfigurable"/>
         <applicationConfigurable
                 id="ru.gitverse.adoct.plugins.idea.mcp.settings"
-                parentId="tools"
-                displayName="AsciiDocTools MCP"
+                parentId="adoct.settings"
+                displayName="MCP-сервер"
                 instance="ru.gitverse.adoct.plugins.idea.mcp.McpSettingsConfigurable"/>
+        <applicationConfigurable
+                id="adoct.settings.types"
+                parentId="adoct.settings"
+                displayName="Типы задач"
+                instance="ru.gitverse.adoct.plugins.idea.mcp.McpIssueTypesConfigurable"/>
         <notificationGroup id="AsciiDocTools.Notifications"
                            displayType="BALLOON"
                            isLogByDefault="true"/>
