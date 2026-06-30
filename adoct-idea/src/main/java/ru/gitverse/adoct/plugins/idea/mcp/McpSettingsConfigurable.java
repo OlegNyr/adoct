@@ -1,8 +1,13 @@
 package ru.gitverse.adoct.plugins.idea.mcp;
 
+import com.intellij.ide.actions.RevealFileAction;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ModalityState;
+import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.ConfigurationException;
+import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.ui.DialogBuilder;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.ui.DoubleClickListener;
@@ -25,6 +30,7 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.FlowLayout;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.MouseEvent;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -85,7 +91,9 @@ public final class McpSettingsConfigurable implements Configurable {
 
         panel = FormBuilder.createFormBuilder()
                 .addComponent(enabled)
-                .addLabeledComponent("Адрес MCP:", statusRow())
+                .addLabeledComponent("Адрес MCP:", urlRow())
+                .addLabeledComponent("Статус:", statusRow())
+                .addLabeledComponent("Диагностика:", diagRow())
                 .addLabeledComponent("Адрес привязки:", bindHost)
                 .addLabeledComponent("Порт:", port)
                 .addLabeledComponent("Проект Jira по умолчанию:", defaultJiraProject)
@@ -100,23 +108,84 @@ public final class McpSettingsConfigurable implements Configurable {
         return panel;
     }
 
-    /** Строка статуса: URL для копирования + индикатор «поднялся / нет» + обновление. */
-    private JComponent statusRow() {
+    /** Строка адреса: URL эндпоинта (только чтение) + кнопка копирования. */
+    private JComponent urlRow() {
         urlField = new JBTextField();
         urlField.setEditable(false);
-        urlField.setColumns(20);
-        statusLabel = new JBLabel();
+        urlField.setColumns(22);
         JButton copy = new JButton("Копировать");
         copy.addActionListener(e -> CopyPasteManager.getInstance().setContents(new StringSelection(urlField.getText())));
-        JButton refresh = new JButton("Обновить");
-        refresh.addActionListener(e -> refreshStatus());
 
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         row.add(urlField);
         row.add(copy);
+        return row;
+    }
+
+    /** Строка статуса: живой индикатор (ping по HTTP) + обновить / перезапустить / открыть лог. */
+    private JComponent statusRow() {
+        statusLabel = new JBLabel();
+        JButton refresh = new JButton("Обновить");
+        refresh.addActionListener(e -> refreshStatus());
+        JButton restart = new JButton("Перезапустить");
+        restart.addActionListener(e -> {
+            McpServerService.getInstance().restart();
+            refreshStatus();
+            // Старт асинхронный — обновим статус ещё раз чуть позже.
+            javax.swing.Timer delayed = new javax.swing.Timer(900, ev -> refreshStatus());
+            delayed.setRepeats(false);
+            delayed.start();
+        });
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         row.add(statusLabel);
         row.add(refresh);
+        row.add(restart);
         return row;
+    }
+
+    /** Строка диагностики: открыть idea.log и выгрузить список тулов с живого сервера в буфер. */
+    private JComponent diagRow() {
+        JButton openLog = new JButton("Открыть лог");
+        openLog.addActionListener(e ->
+                RevealFileAction.openFile(new File(PathManager.getLogPath(), "idea.log")));
+        JButton toolsToClipboard = new JButton("Список тулов → буфер");
+        toolsToClipboard.addActionListener(e -> copyToolsToClipboard());
+
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        row.add(openLog);
+        row.add(toolsToClipboard);
+        return row;
+    }
+
+    /** Тянет {@code tools/list} с живого сервера (off-EDT), кладёт список в буфер и показывает счётчик. */
+    private void copyToolsToClipboard() {
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            String clipboard;
+            String message;
+            boolean ok;
+            try {
+                List<String> names = McpServerService.getInstance().fetchToolNames();
+                clipboard = names.size() + " тулов:\n" + String.join("\n", names);
+                message = "Скопировано в буфер: " + names.size() + " тулов.";
+                ok = true;
+            } catch (Exception ex) {
+                clipboard = null;
+                message = "Не удалось получить список тулов: "
+                        + (ex.getMessage() == null ? ex.toString() : ex.getMessage()) + ".\nСервер запущен?";
+                ok = false;
+            }
+            String clip = clipboard;
+            String msg = message;
+            boolean success = ok;
+            ApplicationManager.getApplication().invokeLater(() -> {
+                if (success) {
+                    CopyPasteManager.getInstance().setContents(new StringSelection(clip));
+                    Messages.showInfoMessage(msg, "Список инструментов MCP");
+                } else {
+                    Messages.showErrorDialog(msg, "Список инструментов MCP");
+                }
+            }, ModalityState.any());
+        });
     }
 
     /** Галки групп инструментов: выключенная группа не отдаётся по MCP (тулы скрываются). */
@@ -202,10 +271,38 @@ public final class McpSettingsConfigurable implements Configurable {
         statusLabel = null;
     }
 
+    /** Живой статус: реальный HTTP-ping off-EDT, затем обновление метки на EDT (с ошибкой старта, если есть). */
     private void refreshStatus() {
-        boolean up = McpServerService.getInstance().isRunning();
-        statusLabel.setText(up ? "● Запущен" : "○ Остановлен");
-        statusLabel.setForeground(up ? JBColor.GREEN : JBColor.RED);
+        statusLabel.setText("проверка…");
+        statusLabel.setForeground(JBColor.GRAY);
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            McpServerService svc = McpServerService.getInstance();
+            long start = System.nanoTime();
+            boolean up = svc.pingHttp();
+            String error = svc.lastError();
+            // Минимально показываем «проверка…» ~600 мс, иначе локальный ping мелькает незаметно.
+            long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+            if (elapsedMs < 600) {
+                try {
+                    Thread.sleep(600 - elapsedMs);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            // ModalityState.any() — иначе апдейт встанет в очередь за модальным окном Settings и «зависнет».
+            ApplicationManager.getApplication().invokeLater(() -> {
+                if (statusLabel == null) {
+                    return;
+                }
+                if (up) {
+                    statusLabel.setText("● Запущен");
+                    statusLabel.setForeground(JBColor.GREEN);
+                } else {
+                    statusLabel.setText("○ Остановлен" + (error == null || error.isBlank() ? "" : " — " + error));
+                    statusLabel.setForeground(JBColor.RED);
+                }
+            }, ModalityState.any());
+        });
     }
 
     // ---- helpers ----
