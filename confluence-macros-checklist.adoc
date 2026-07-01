@@ -1,0 +1,52 @@
+= Топ макросов Confluence для техдоков
+:toc: macro
+:doc-base: https://confluence.atlassian.com/doc
+
+Ссылки — документация Confluence Data Center 10.2 (Latest).
+
+NOTE: Динамические серверные листинги (`children`, `detailssummary`, `contentbylabel`,
+`attachments`) не имеют статического эквивалента — при экспорте намеренно пропускаются
+(тихо, без предупреждающего лога).
+
+toc::[]
+
+== Формат / выделение
+
+* [x] *Code Block* (`code`) — подсветка кода, номера строк, сворачивание +
+{doc-base}/code-block-macro-139390.html
+* [x] *Table of Contents* (`toc`) — оглавление из заголовков +
+{doc-base}/table-of-contents-macro-182682099.html
+* [x] *Info / Note / Warning / Tip* (`info` / `note` / `warning` / `tip`) — выноски-акценты +
+{doc-base}/info-tip-note-and-warning-macros-51872369.html
+* [x] *Expand* (`expand`) — скрыть длинный вывод / edge cases +
+{doc-base}/expand-macro-223222352.html
+* [x] *Status* (`status`) — цветные лозенги статуса → инлайн `[.status-<colour>]#title#` +
+{doc-base}/status-macro-223222355.html
+* [x] *Panel* (`panel`) — цветная панель с заголовком → sidebar `****` +
+{doc-base}/panel-macro-51872380.html
+
+== Структура / переиспользование
+
+* [x] *Include Page* (`include`) — трансклюзия целой страницы → `include::<заголовок>/index.adoc[]` +
+{doc-base}/include-page-macro-139514.html
+* [x] *Excerpt* (`excerpt`) — пометить переиспользуемый фрагмент → рендерит тело +
+{doc-base}/excerpt-macro-148062.html
+* [x] *Excerpt Include* (`excerpt-include`) — вставить помеченный фрагмент → ссылка на страницу +
+{doc-base}/excerpt-include-macro-148067.html
+* [x] *Children Display* (`children`) — автосписок дочерних страниц → пропуск (динамика) +
+{doc-base}/children-display-macro-139501.html
+* [x] *Page Properties* (`details`) — метаданные на странице → рендерит тело-таблицу +
+{doc-base}/page-properties-macro-184550024.html
+* [x] *Page Properties Report* (`detailssummary`) — сводный отчёт по пространству → пропуск (динамика) +
+{doc-base}/page-properties-report-macro-186089616.html
+
+== Динамика / интеграция
+
+* [x] *Jira Issues* (`jira`) — живой список задач по JQL → ссылка на задачу/JQL +
+{doc-base}/jira-issues-macro-139380.html
+* [x] *Content by Label* (`contentbylabel`) — подборка по меткам → пропуск (динамика) +
+{doc-base}/content-by-label-macro-145566.html
+* [x] *Anchor* (`anchor`) — якоря внутри страницы +
+{doc-base}/anchor-macro-182682072.html
+* [x] *Attachments* (`attachments`) — список вложений → пропуск (динамика) +
+{doc-base}/attachments-macro-97911315.html

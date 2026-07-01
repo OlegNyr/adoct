@@ -1,0 +1,54 @@
+= Дополнительные плагины Confluence (Marketplace) для техдоков
+:mkt: https://marketplace.atlassian.com/apps
+:toc: macro
+
+Дополнение к `confluence-macros-checklist.adoc` (встроенные макросы). +
+Все ссылки и совместимость проверены по Marketplace; указаны версии с поддержкой *Confluence Data Center 10.x*. Перед установкой — сверить с точной версией вашего инстанса и провести внутренний security-review (egress, хранение данных). Лицензирование DC — по общему тиру пользователей инстанса, а не по числу тех, кому плагин реально нужен.
+
+toc::[]
+
+== Диаграммы
+
+* [ ] *draw.io Diagrams* (//SEIBERT/MEDIA) — визуальные диаграммы (UML, BPMN, ERD, C4, сети) + whiteboard; данные хранятся как вложения на инстансе; умеет встраивать Mermaid-код. DC 10.0.1–10.2.13 +
+{mkt}/1210933/draw-io-diagrams-uml-bpmn-aws-erd-flowcharts
+* [ ] *PlantUML for Confluence* — диаграммы-как-код из текста (UML, sequence, ditaa); DC-версия рендерит серверно встроенной библиотекой, без обращений наружу — плюс для on-prem/банка; ложится на текстовый AsciiDoc-воркфлоу. DC 10.x +
+{mkt}/41025/plantuml-for-confluence
+
+== API-документация
+
+* [ ] *Open API (Swagger) Editor for Confluence* — рендер и редактирование OpenAPI/Swagger (JSON/YAML), интерактивный Swagger UI с «Try it out», экспорт. Актуально для твоих OpenAPI-спек (JAICP Chat API). DC 10.0.1–10.2.13. Примечание: «Try it out» и онлайн-валидатор ходят наружу — валидатор отключается параметром +
+{mkt}/1218914/open-api-swagger-editor-for-confluence
+* [ ] _(альтернатива)_ *Open API (Swagger) Integration* — подтягивает спеку прямо из Bitbucket/GitHub/GitLab/страницы Confluence +
+{mkt}/1219386/open-api-swagger-integration
+
+== Экспорт и публикация
+
+* [ ] *Scroll PDF Exporter* (K15t) — брендированный PDF из страницы/дерева/пространства, визуальный редактор шаблонов, REST API для ночного экспорта, готовые шаблоны под ISO/DIN. Ключевой для выгрузки ТЗ/спек под ГОСТ. Рендер серверный (PDFreactor), без egress. DC 8.5.3–10.2.13 +
+{mkt}/7019/scroll-pdf-exporter-for-confluence
+
+== Согласование и жизненный цикл (регуляторика)
+
+* [ ] *Comala Document Management* (Appfire) — workflow согласования и публикации, e-signatures, аудит-трейл «кто/что/когда», workflow builder, готовый QMS-процесс под ISO 9001. Прямо в тему для банковской документации (683-П, аудит). DC 10.0.1–10.2.13 +
+{mkt}/142/comala-document-management
+* [ ] _(если используете Scroll Versions)_ *Comala Document Mgmt for Scroll Versions* — связка согласования с версионированием документации +
+{mkt}/1216055/comala-document-mgmt-for-scroll-versions
+
+== Таблицы и данные
+
+* [ ] *Table Filter, Charts & Spreadsheets* (Stiltsoft) — фильтры, pivot, 15+ типов графиков (вкл. Gantt), SQL-трансформер, Excel-подобные таблицы, `Table from CSV/JSON`; работает поверх Page Properties Report и Jira-макроса. DC 7.0.1–10.2.13 +
+{mkt}/27447/table-filter-charts-spreadsheets-for-confluence
+
+== Форматирование и layout
+
+* [ ] *AURA — Content Formatting Macros, Tabs, LaTeX, HTML* — табы, карточки, кнопки, статусы, progress bars, LaTeX, Numbered Headings; консолидирует несколько форматтеров в один. DC 10.0.1–10.2.13 +
+{mkt}/1221974/aura-content-formatting-macros-tabs-latex-html-in-confluence
+* [ ] _(альтернатива, давно на рынке)_ *Mosaic: Content Formatting Macros & Templates* (Kolekti, ex-Adaptavist) — 30+ макросов + full-page шаблоны, LaTeX/Numbered Headings/HTML +
+{mkt}/247/mosaic-content-formatting-macros-templates-for-confluence
+
+== Примечания
+
+* *Совместимость:* значения DC-версий — на момент проверки; всегда сверяй на странице плагина под свой билд Confluence.
+* *Безопасность (важно для банка):* для on-prem предпочитай серверный рендер без egress (PlantUML DC, Scroll PDF, draw.io — хранение на инстансе). У Swagger-плагинов отключай внешний онлайн-валидатор; «Try it out» уводит запросы на реальный API.
+* *AsciiDoc / Confluence Publisher:* макросы этих плагинов в редакторе — нативные, но из AsciiDoc автоматически они не появятся. Каждый имеет свой storage-format `ac:name` (напр. draw.io, `swagger`, `pdf-export`) — вставляй их тем же passthrough-приёмом (`++++` + `<ac:structured-macro>`), что и встроенные.
+* *Экспорт Confluence→AsciiDoc (наш конвертер):* `drawio` и `plantuml` — выделенные хендлеры. `swagger`/`open-api` — спека OpenAPI выносится в отдельный файл `files/swagger_N.{json,yaml}`, в документ ставится ссылка на него. Для всех прочих плагинных макросов действует generic-правило: макрос с телом (`ac:rich-text-body`) — тело разворачивается (контент Table Filter/AURA/Mosaic не теряется); макрос без тела (динамический листинг) — пропускается. Специфический рендер (Swagger UI, графики, PDF-шаблоны) статически не воспроизводится — остаётся исходный контент/код/спека.
+* *Лицензии:* почти всё платное; на DC тарификация идёт по тиру пользователей всего инстанса.

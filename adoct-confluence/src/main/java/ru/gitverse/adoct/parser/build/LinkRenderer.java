@@ -33,7 +33,7 @@ public final class LinkRenderer {
         return link(links(metadata), new LinksUser(userKey));
     }
 
-    static String render(Element e, Map<MetadataKey, Object> metadata) {
+    public static String render(Element e, Map<MetadataKey, Object> metadata) {
         Map<LinksValue, LinkResult> links = links(metadata);
 
         Elements tagUser = e.getElementsByTag("ri:user");

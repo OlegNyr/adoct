@@ -9,7 +9,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Макрос {@code expandall} — намеренно ничего не выводит (служебная обёртка Confluence). */
+/**
+ * Макросы, которые намеренно ничего не выводят: служебная обёртка {@code expandall} и динамические
+ * серверные листинги ({@code children}, {@code detailssummary}, {@code contentbylabel},
+ * {@code attachments}) — их контент Confluence собирает на лету, статического эквивалента нет.
+ * Регистрация здесь (а не «unknown») подавляет предупреждающий лог: это осознанный пропуск.
+ */
 public final class IgnoreOkMacro extends AbstractNodeMacro {
 
     public IgnoreOkMacro(BlockBuilder blocks) {
@@ -18,7 +23,7 @@ public final class IgnoreOkMacro extends AbstractNodeMacro {
 
     @Override
     public Set<String> names() {
-        return Set.of("expandall");
+        return Set.of("expandall", "children", "detailssummary", "contentbylabel", "attachments");
     }
 
     @Override

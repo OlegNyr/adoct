@@ -6,6 +6,7 @@ import org.jsoup.nodes.Node;
 import org.jsoup.nodes.TextNode;
 import ru.gitverse.adoct.parser.color.ColorParser;
 import ru.gitverse.adoct.parser.ast.Inline;
+import ru.gitverse.adoct.parser.build.macro.StatusMacro;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -97,6 +98,8 @@ public final class InlineBuilder {
                 } else if ("profile".equals(macroName)) {
                     String userKey = macro.getElementsByTag("ri:user").attr("ri:userkey");
                     raw(out, LinkRenderer.user(userKey, ctx.metadata()));
+                } else if ("status".equals(macroName)) {
+                    raw(out, StatusMacro.render(macroParams(macro)));
                 }
             }
             default -> out.addAll(children(node, ctx));

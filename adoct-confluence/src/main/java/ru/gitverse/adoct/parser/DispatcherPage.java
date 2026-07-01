@@ -228,11 +228,9 @@ public class DispatcherPage {
         }
     }
 
-    /** Делает из заголовка страницы безопасное имя папки (заменяет недопустимые в ФС символы на {@code _}). */
+    /** Делает из заголовка страницы безопасное имя папки. Делегирует в {@link PageFolder#sanitize}. */
     static String sanitizeFolderName(String title) {
-        String trimmed = title == null ? "" : title.strip();
-        String safe = trimmed.replaceAll("[<>:\"/\\\\|?*\\x00-\\x1F]", "_").replaceAll("[. ]+$", "");
-        return safe.isBlank() ? "page" : safe;
+        return PageFolder.sanitize(title);
     }
 
     private void saveLinks(Path source, Map<LinksValue, LinkResult> linksResolvers) throws IOException {

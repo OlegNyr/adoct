@@ -51,12 +51,25 @@ public abstract class AbstractNodeMacro implements NodeMacro {
                 || StringUtils.countMatches(text, "\n") <= ctx.maxIncludeString()) {
             return text;
         }
+        String path = storeFile(text, ctx, fileName);
+        return path == null ? text : "include::%s[]".formatted(path);
+    }
+
+    /**
+     * Пишет {@code text} в файл {@code fileName} внутри {@link MetadataKey#FILES_FOLDER} и возвращает
+     * относительный путь ({@code files/fileName}) для {@code include::}/{@code link:}. В in-memory
+     * режиме ({@link MetadataKey#IN_MEMORY}) файл не пишется — возвращает {@code null}.
+     */
+    @SneakyThrows
+    protected String storeFile(String text, BuildContext ctx, String fileName) {
+        if (Boolean.TRUE.equals(ctx.metadata().get(MetadataKey.IN_MEMORY))) {
+            return null;
+        }
         Path filesFolder = (Path) ctx.metadata().getOrDefault(MetadataKey.FILES_FOLDER,
                 ctx.metadata().get(MetadataKey.DESTINATION_FOLDER));
         Files.writeString(filesFolder.resolve(fileName), text);
         Object folderName = ctx.metadata().get(MetadataKey.FILES_FOLDER_NAME);
-        String include = folderName == null ? fileName : folderName + "/" + fileName;
-        return "include::%s[]".formatted(include);
+        return folderName == null ? fileName : folderName + "/" + fileName;
     }
 
     protected static List<Block> prepend(Block first, List<Block> rest) {
