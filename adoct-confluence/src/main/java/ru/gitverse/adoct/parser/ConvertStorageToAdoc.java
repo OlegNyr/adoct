@@ -124,6 +124,15 @@ public class ConvertStorageToAdoc {
                 res.add(new LinksAttachment(attachment.attr("ri:filename")));
             }
         }
+        for (Element macro : document.getElementsByTag("ac:structured-macro")) {
+            if (!"profile".equals(macro.attr("ac:name"))) {
+                continue;
+            }
+            String userKey = macro.getElementsByTag("ri:user").attr("ri:userkey");
+            if (StringUtils.isNotBlank(userKey)) {
+                res.add(new LinksUser(userKey));
+            }
+        }
         return Set.copyOf(res);
     }
 

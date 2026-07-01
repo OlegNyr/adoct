@@ -49,6 +49,10 @@ public sealed interface Block {
     record Admonition(String name, String title, List<Block> body) implements Block {
     }
 
+    /** Confluence-панель → sidebar-блок {@code ****} с опц. заголовком ({@code .Title}). */
+    record Sidebar(String title, List<Block> body) implements Block {
+    }
+
     /** Готовый самодостаточный AsciiDoc-блок (код, картинка, toc, anchor, plantuml, drawio…). */
     record RawBlock(String adoc) implements Block {
     }

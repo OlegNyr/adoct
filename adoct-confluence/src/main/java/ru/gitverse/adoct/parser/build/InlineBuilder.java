@@ -89,9 +89,14 @@ public final class InlineBuilder {
             case "ac:inline-comment-marker" -> out.addAll(children(node, ctx));
             case "ac:placeholder" -> { /* выкидываем */ }
             case "ac:structured-macro" -> {
-                if ("jira".equals(((Element) node).attr("ac:name"))) {
-                    String key = macroParams((Element) node).get("key");
+                Element macro = (Element) node;
+                String macroName = macro.attr("ac:name");
+                if ("jira".equals(macroName)) {
+                    String key = macroParams(macro).get("key");
                     raw(out, "link:https://jira.example.com/browse/%s[]".formatted(key));
+                } else if ("profile".equals(macroName)) {
+                    String userKey = macro.getElementsByTag("ri:user").attr("ri:userkey");
+                    raw(out, LinkRenderer.user(userKey, ctx.metadata()));
                 }
             }
             default -> out.addAll(children(node, ctx));

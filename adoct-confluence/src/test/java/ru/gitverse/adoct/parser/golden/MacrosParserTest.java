@@ -1,8 +1,12 @@
 package ru.gitverse.adoct.parser.golden;
 
 import org.junit.Test;
+import ru.gitverse.adoct.parser.confluence.LinkResult;
+import ru.gitverse.adoct.parser.model.LinksUser;
+import ru.gitverse.adoct.parser.model.MetadataKey;
 
 import java.io.IOException;
+import java.util.Map;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -99,6 +103,51 @@ public class MacrosParserTest extends AbstractConvertParserTest {
         // topHeader по умолчанию 0 -> printHeader(1) -> '=='
         assertTrue(out.contains("== Подробности"));
         assertTrue(out.contains("скрытый текст"));
+    }
+
+    @Test
+    public void panelMacroBecomesSidebar() throws IOException {
+        String out = convert(
+                "<ac:structured-macro ac:name=\"panel\">"
+                + "<ac:parameter ac:name=\"title\">Заметка</ac:parameter>"
+                + "<ac:rich-text-body><h2>Заголовок</h2><p>тело панели</p></ac:rich-text-body>"
+                + "</ac:structured-macro>");
+        assertTrue(out.contains(".Заметка"));
+        assertTrue(out.contains("****"));
+        // содержимое панели не теряется
+        assertTrue(out.contains("== Заголовок"));
+        assertTrue(out.contains("тело панели"));
+    }
+
+    @Test
+    public void profileMacroInlineResolvesToUserLink() throws IOException {
+        Map<MetadataKey, Object> links = Map.of(MetadataKey.LINKS,
+                Map.of(new LinksUser("abc123"), new LinkResult("Иван Иванов", "http://c/user/abc123")));
+        String out = convert(
+                "<p><ac:structured-macro ac:name=\"profile\"><ac:parameter ac:name=\"user\">"
+                + "<ri:user ri:userkey=\"abc123\"/></ac:parameter></ac:structured-macro></p>", links);
+        assertTrue(out.contains("link:http://c/user/abc123[Иван Иванов]"));
+    }
+
+    @Test
+    public void profileMacroBlockLevelResolvesToUserLink() throws IOException {
+        // profile прямым потомком блока (не в <p>) идёт через ProfileMacro, а не InlineBuilder
+        Map<MetadataKey, Object> links = Map.of(MetadataKey.LINKS,
+                Map.of(new LinksUser("abc123"), new LinkResult("Иван Иванов", "http://c/user/abc123")));
+        String out = convert(
+                "<ac:structured-macro ac:name=\"profile\"><ac:parameter ac:name=\"user\">"
+                + "<ri:user ri:userkey=\"abc123\"/></ac:parameter></ac:structured-macro>", links);
+        assertTrue(out.contains("link:http://c/user/abc123[Иван Иванов]"));
+    }
+
+    @Test
+    public void profileMacroWithEmptyUserEmitsNothing() throws IOException {
+        String out = convert(
+                "<p>до <ac:structured-macro ac:name=\"profile\">"
+                + "<ac:parameter ac:name=\"user\"></ac:parameter></ac:structured-macro> после</p>");
+        assertTrue(out.contains("до"));
+        assertTrue(out.contains("после"));
+        assertFalse(out.contains("mock"));
     }
 
     @Test

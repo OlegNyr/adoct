@@ -17,9 +17,20 @@ import java.util.Map;
  * Логика перенесена из старого {@code ParseLink}; результат — без хвостовых пробелов
  * (расстановку пробелов берёт на себя writer).
  */
-final class LinkRenderer {
+public final class LinkRenderer {
 
     private LinkRenderer() {
+    }
+
+    /**
+     * Рендер упоминания пользователя (макрос {@code profile}, {@code ri:user}) по резолву из
+     * {@code metadata[LINKS]}. Пустой ключ → пустая строка (аноним/удалённый пользователь).
+     */
+    public static String user(String userKey, Map<MetadataKey, Object> metadata) {
+        if (StringUtils.isBlank(userKey)) {
+            return "";
+        }
+        return link(links(metadata), new LinksUser(userKey));
     }
 
     static String render(Element e, Map<MetadataKey, Object> metadata) {

@@ -12,7 +12,9 @@ import ru.gitverse.adoct.parser.build.macro.JiraMacro;
 import ru.gitverse.adoct.parser.build.macro.NodeMacro;
 import ru.gitverse.adoct.parser.build.macro.NoteMacro;
 import ru.gitverse.adoct.parser.build.macro.NumberMacro;
+import ru.gitverse.adoct.parser.build.macro.PanelMacro;
 import ru.gitverse.adoct.parser.build.macro.PlantumlMacro;
+import ru.gitverse.adoct.parser.build.macro.ProfileMacro;
 import ru.gitverse.adoct.parser.build.macro.StepMacro;
 import ru.gitverse.adoct.parser.build.macro.TabsMacro;
 import ru.gitverse.adoct.parser.build.macro.TocMacro;
@@ -41,6 +43,8 @@ public final class MacroBuilder {
                 new CodeMacro(blocks),
                 new PlantumlMacro(blocks),
                 new NoteMacro(blocks),
+                new PanelMacro(blocks),
+                new ProfileMacro(blocks),
                 new AnchorMacro(blocks),
                 new StepMacro(blocks),
                 new TocMacro(blocks),

@@ -27,6 +27,7 @@ public final class AsciiDocWriter {
             case Block.ItemList l -> list(l, 1);
             case Block.Table t -> table(t, '|');
             case Block.Admonition a -> admonition(a);
+            case Block.Sidebar s -> sidebar(s);
             case Block.RawBlock r -> r.adoc();
             case Block.Container c -> write(c.children());
         };
@@ -125,6 +126,11 @@ public final class AsciiDocWriter {
     private String admonition(Block.Admonition a) {
         String title = a.title() != null && !a.title().isBlank() ? "." + a.title() + "\n" : "";
         return title + "[" + a.name() + "]\n====\n" + write(a.body()) + "\n====";
+    }
+
+    private String sidebar(Block.Sidebar s) {
+        String title = s.title() != null && !s.title().isBlank() ? "." + s.title() + "\n" : "";
+        return title + "****\n" + write(s.body()) + "\n****";
     }
 
     // --- инлайн ------------------------------------------------------------
