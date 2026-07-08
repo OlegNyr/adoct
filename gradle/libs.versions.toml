@@ -13,6 +13,8 @@ commonsIo = "2.16.1"
 httpclient = "4.5.14"
 datafaker = "2.4.2"
 pngj = "2.0.1"
+maven = "3.9.9"
+mavenPluginTools = "3.13.1"
 
 # plugins
 changelog = "2.2.1"
@@ -32,6 +34,8 @@ commonsIo = { group = "commons-io", name = "commons-io", version.ref = "commonsI
 httpclient = { group = "org.apache.httpcomponents", name = "httpclient", version.ref = "httpclient" }
 datafaker = { group = "net.datafaker", name = "datafaker", version.ref = "datafaker" }
 pngj = { group = "ar.com.hjg", name = "pngj", version.ref = "pngj" }
+mavenPluginApi = { group = "org.apache.maven", name = "maven-plugin-api", version.ref = "maven" }
+mavenPluginAnnotations = { group = "org.apache.maven.plugin-tools", name = "maven-plugin-annotations", version.ref = "mavenPluginTools" }
 
 [plugins]
 changelog = { id = "org.jetbrains.changelog", version.ref = "changelog" }

@@ -4,6 +4,9 @@ plugins {
     alias(libs.plugins.kotlin) apply false
     alias(libs.plugins.intelliJPlatform) apply false
     alias(libs.plugins.changelog) apply false
+    // Объявляем в корне (apply false), чтобы класс плагина грузился одним classloader'ом: иначе его
+    // shared build service (SonatypeRepositoryBuildService) конфликтует при применении в двух модулях.
+    id("com.vanniktech.maven.publish") version "0.30.0" apply false
 }
 
 val release = System.getProperty("release").toBoolean()

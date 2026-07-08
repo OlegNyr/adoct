@@ -15,6 +15,7 @@ Modules (Gradle subprojects):
 - `:adoct-jira` — Jira integration (`JiraClient`). Pure `java-library`.
 - `:adoct-bitbucket` — Bitbucket Server/DC integration (`BitbucketClient`: code search + repos/files/PRs, read-only). Pure `java-library`, JDK HttpClient + Jackson, returns raw `JsonNode`.
 - `:adoct-anonymize` — export anonymizer + bug-report bundling (`anonymize`, `bugreport`). Pure `java-library`, independent of the engine.
+- `:adoct-maven-plugin` — a **Maven plugin** (goal `adoct:publish`) that publishes a folder/`.adoc` to Confluence by reusing `AdocPublisher` from `:adoct-confluence`. Built with the `de.benediktritter.maven-plugin-development` Gradle plugin (descriptor generated from `@Mojo`; ASM/QDox forced to Java-21-aware versions on its classpath). See `adoct-maven-plugin/README.md`.
 - `:adoct-idea` — the **IntelliJ plugin** (`plugins.idea.*`, `plugin.xml`, message bundles). Applies `org.jetbrains.intellij.platform`; depends on the library modules and bundles them into the distribution.
 
 Common commands:
@@ -23,6 +24,7 @@ Common commands:
 - `./gradlew build` — compile + test + assemble every module.
 - `./gradlew test` — run the JUnit suites of all modules; `./gradlew :adoct-confluence:test` for one module.
 - `./gradlew :adoct-confluence:test --tests "ru.gitverse.adoct.parser.golden.MacrosParserTest"` — run a single test class.
+- `./gradlew :adoct-confluence:publishToMavenLocal :adoct-maven-plugin:publishToMavenLocal` — install the Maven plugin (and its engine dependency) into `~/.m2` so `mvn adoct:publish` can resolve it.
 - `-Drelease=true` system property strips the `-SNAPSHOT` suffix from the version.
 
 Dependencies resolve from public repositories only: Maven Central + the Gradle Plugin Portal for plugins, and the JetBrains IntelliJ Platform repositories (`intellijPlatform.defaultRepositories()`) for the platform and bundled plugins. See `settings.gradle.kts`. Note: `jsoup`, `jackson`, `commons-lang3`/`commons-io` and Apache `httpclient` — once provided transitively by the IntelliJ Platform — are now declared explicitly in `gradle/libs.versions.toml` and owned by the library modules (they are used internally and never cross the plugin classloader boundary, so bundling our own copies is safe). No credentials or private mirrors are required.

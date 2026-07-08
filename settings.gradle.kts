@@ -16,6 +16,7 @@ include(
     ":adoct-anonymize",
     ":adoct-mcp",
     ":adoct-mcp-cli",
+    ":adoct-maven-plugin",
     ":adoct-idea",
 )
 
