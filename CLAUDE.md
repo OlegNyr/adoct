@@ -23,7 +23,7 @@ Common commands:
 - `./gradlew :adoct-idea:buildPlugin` — assemble the plugin zip into `adoct-idea/build/distributions/`.
 - `./gradlew build` — compile + test + assemble every module.
 - `./gradlew test` — run the JUnit suites of all modules; `./gradlew :adoct-confluence:test` for one module.
-- `./gradlew :adoct-confluence:test --tests "ru.gitverse.adoct.parser.golden.MacrosParserTest"` — run a single test class.
+- `./gradlew :adoct-confluence:test --tests "io.github.adoct.parser.golden.MacrosParserTest"` — run a single test class.
 - `./gradlew :adoct-confluence:publishToMavenLocal :adoct-maven-plugin:publishToMavenLocal` — install the Maven plugin (and its engine dependency) into `~/.m2` so `mvn adoct:publish` can resolve it.
 - `-Drelease=true` system property strips the `-SNAPSHOT` suffix from the version.
 

@@ -34,9 +34,6 @@ plugins {
 
 apply(plugin = "de.benediktritter.maven-plugin-development")
 
-// Отдельный namespace для Central (см. :adoct-confluence) — координата совпадает с зависимостью-движком.
-group = "io.github.olegnyr"
-
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
@@ -78,7 +75,7 @@ dependencies {
 mavenPublishing {
     publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL)
     signAllPublications()
-    coordinates("io.github.olegnyr", "adoct-maven-plugin", version.toString())
+    coordinates(group.toString(), "adoct-maven-plugin", version.toString())
     pom {
         name.set("adoct-maven-plugin")
         description.set("Maven plugin that publishes a folder or .adoc file to Confluence (goal adoct:publish).")

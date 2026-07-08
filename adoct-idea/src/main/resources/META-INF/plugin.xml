@@ -10,34 +10,34 @@
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow id="Confluence Export"
                     anchor="right"
-                    factoryClass="ru.gitverse.adoct.plugins.idea.ui.ConfluenceExportToolWindowFactory"
+                    factoryClass="io.github.adoct.plugins.idea.ui.ConfluenceExportToolWindowFactory"
                     icon="AllIcons.Actions.Upload"
                     showStripeButton="false"/>
         <toolWindow id="Confluence Import"
                     anchor="right"
-                    factoryClass="ru.gitverse.adoct.plugins.idea.ui.ConfluenceImportToolWindowFactory"
+                    factoryClass="io.github.adoct.plugins.idea.ui.ConfluenceImportToolWindowFactory"
                     icon="AllIcons.Actions.Upload"
                     showStripeButton="false"/>
         <applicationConfigurable
                 id="adoct.settings"
                 parentId="tools"
                 displayName="AsciiDocTools"
-                instance="ru.gitverse.adoct.plugins.idea.settings.AdoctSettingsConfigurable"/>
+                instance="io.github.adoct.plugins.idea.settings.AdoctSettingsConfigurable"/>
         <applicationConfigurable
-                id="ru.gitverse.adoct.plugins.idea.settings.confluence"
+                id="io.github.adoct.plugins.idea.settings.confluence"
                 parentId="adoct.settings"
                 displayName="Серверы Atlassian"
-                instance="ru.gitverse.adoct.plugins.idea.settings.ConfluenceSettingsConfigurable"/>
+                instance="io.github.adoct.plugins.idea.settings.ConfluenceSettingsConfigurable"/>
         <applicationConfigurable
-                id="ru.gitverse.adoct.plugins.idea.mcp.settings"
+                id="io.github.adoct.plugins.idea.mcp.settings"
                 parentId="adoct.settings"
                 displayName="MCP-сервер"
-                instance="ru.gitverse.adoct.plugins.idea.mcp.McpSettingsConfigurable"/>
+                instance="io.github.adoct.plugins.idea.mcp.McpSettingsConfigurable"/>
         <applicationConfigurable
                 id="adoct.settings.types"
                 parentId="adoct.settings"
                 displayName="Типы задач"
-                instance="ru.gitverse.adoct.plugins.idea.mcp.McpIssueTypesConfigurable"/>
+                instance="io.github.adoct.plugins.idea.mcp.McpIssueTypesConfigurable"/>
         <notificationGroup id="AsciiDocTools.Notifications"
                            displayType="BALLOON"
                            isLogByDefault="true"/>
@@ -45,23 +45,23 @@
 
     <!-- Поднимает встроенный MCP-сервер при запуске IDE. -->
     <applicationListeners>
-        <listener class="ru.gitverse.adoct.plugins.idea.mcp.McpServerLauncher"
+        <listener class="io.github.adoct.plugins.idea.mcp.McpServerLauncher"
                   topic="com.intellij.ide.AppLifecycleListener"/>
     </applicationListeners>
 
     <actions>
         <action id="ConfluenceExport.ShowToolWindow"
-                class="ru.gitverse.adoct.plugins.idea.action.ShowConfluenceExportToolWindowAction">
+                class="io.github.adoct.plugins.idea.action.ShowConfluenceExportToolWindowAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="alt shift I"/>
         </action>
         <action id="ConfluenceImport.ShowToolWindow"
-                class="ru.gitverse.adoct.plugins.idea.action.ShowConfluenceImportToolWindowAction">
+                class="io.github.adoct.plugins.idea.action.ShowConfluenceImportToolWindowAction">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="alt shift P"/>
         </action>
         <action id="AsciiDocTools.AnonymizeExport"
-                class="ru.gitverse.adoct.plugins.idea.action.AnonymizeExportAction">
+                class="io.github.adoct.plugins.idea.action.AnonymizeExportAction">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>

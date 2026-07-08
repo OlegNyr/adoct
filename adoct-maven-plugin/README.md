@@ -1,14 +1,14 @@
 # adoct-maven-plugin
 
 Maven-плагин, публикующий папку (или один `.adoc`) в Confluence. Тонкая обёртка над движком
-`ru.gitverse.adoct.generate.AdocPublisher` из модуля `:adoct-confluence` — та же логика, что и публикация
+`io.github.adoct.generate.AdocPublisher` из модуля `:adoct-confluence` — та же логика, что и публикация
 из IDE-плагина (`Alt+Shift+I`) и MCP-тула `confluence_publish_adoc`.
 
 ## Цель
 
 | | |
 |---|---|
-| Координаты | `io.github.olegnyr:adoct-maven-plugin` |
+| Координаты | `io.github.adoct:adoct-maven-plugin` |
 | Goal | `publish` (goal-prefix `adoct` → `mvn adoct:publish`) |
 
 ## Параметры
@@ -30,7 +30,7 @@ Maven-плагин, публикующий папку (или один `.adoc`) 
 <build>
   <plugins>
     <plugin>
-      <groupId>io.github.olegnyr</groupId>
+      <groupId>io.github.adoct</groupId>
       <artifactId>adoct-maven-plugin</artifactId>
       <version>1.0.0</version>
       <configuration>
@@ -47,14 +47,14 @@ Maven-плагин, публикующий папку (или один `.adoc`) 
 
 ```bash
 mvn adoct:publish -Dconfluence.token=$CONFLUENCE_PAT
-# или полностью: mvn io.github.olegnyr:adoct-maven-plugin:1.0.0:publish -Dconfluence.pageUrl=... -Dconfluence.token=...
+# или полностью: mvn io.github.adoct:adoct-maven-plugin:1.0.0:publish -Dconfluence.pageUrl=... -Dconfluence.token=...
 ```
 
 Для короткой формы `mvn adoct:publish` добавьте группу в `~/.m2/settings.xml`:
 
 ```xml
 <pluginGroups>
-  <pluginGroup>io.github.olegnyr</pluginGroup>
+  <pluginGroup>io.github.adoct</pluginGroup>
 </pluginGroups>
 ```
 
@@ -71,7 +71,7 @@ mvn adoct:publish -Dconfluence.token=$CONFLUENCE_PAT
 
 ## Установка
 
-Публикуются **два** артефакта: сам плагин и движок `io.github.olegnyr:adoct-confluence` (транзитивная
+Публикуются **два** артефакта: сам плагин и движок `io.github.adoct:adoct-confluence` (транзитивная
 зависимость; остальные транзитивы — asciidoctorj и пр. — из Maven Central).
 
 ### Локально (для тестов)
@@ -86,7 +86,7 @@ mvn adoct:publish -Dconfluence.token=$CONFLUENCE_PAT
 грузит бандл в Central Portal). Разовая подготовка (делается вручную, вне сборки):
 
 1. **Аккаунт и namespace.** Зарегистрироваться на https://central.sonatype.com, добавить namespace
-   `io.github.olegnyr` и подтвердить его через GitHub (портал даёт код → создать публичный репозиторий
+   `io.github.adoct` и подтвердить его через GitHub (портал даёт код → создать публичный репозиторий
    с этим именем). Сгенерировать в портале **user token** (username/password).
 2. **GPG-ключ.** `gpg --gen-key`, затем выложить публичный ключ на keyserver
    (`gpg --keyserver keyserver.ubuntu.com --send-keys <KEYID>`). Экспортировать секретный ключ для Gradle:

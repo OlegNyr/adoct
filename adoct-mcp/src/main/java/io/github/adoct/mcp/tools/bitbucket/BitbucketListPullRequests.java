@@ -1,0 +1,31 @@
+package io.github.adoct.mcp.tools.bitbucket;
+
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.github.adoct.mcp.InputSchema;
+import io.github.adoct.mcp.McpTool;
+import io.github.adoct.mcp.tools.Tool;
+import io.github.adoct.mcp.tools.ToolContext;
+
+/** {@code bitbucket_list_pull_requests} — pull request'ы репозитория по состоянию. */
+public final class BitbucketListPullRequests implements Tool {
+
+    @Override
+    public McpTool create(ToolContext c) {
+        ObjectNode schema = InputSchema.object()
+                .str("projectKey", "Ключ проекта", true)
+                .str("repoSlug", "Slug репозитория", true)
+                .str("state", "Состояние: OPEN (по умолчанию) / MERGED / DECLINED / ALL", false)
+                .integer("limit", "Лимит (1..100, по умолчанию 25)", false)
+                .integer("start", "Смещение для пагинации (по умолчанию 0)", false)
+                .str("host", "Хост Bitbucket; иначе хост по умолчанию", false)
+                .build();
+        return new McpTool("bitbucket_list_pull_requests",
+                "Pull request'ы репозитория Bitbucket (OPEN/MERGED/DECLINED/ALL).", schema, args ->
+                c.ok(c.bitbucket(args).listPullRequests(
+                        c.reqStr(args, "projectKey"),
+                        c.reqStr(args, "repoSlug"),
+                        c.text(args, "state"),
+                        c.optInt(args, "start", 0),
+                        c.optInt(args, "limit", 25))));
+    }
+}

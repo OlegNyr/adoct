@@ -8,10 +8,6 @@ plugins {
     id("com.vanniktech.maven.publish")
 }
 
-// Отдельный namespace для Central (проверяется через GitHub). Остальные модули остаются в pluginGroup;
-// координата зависимости в POM плагина совпадает, т.к. оба публикуемых модуля используют эту группу.
-group = "io.github.olegnyr"
-
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
@@ -43,7 +39,7 @@ dependencies {
 mavenPublishing {
     publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL)
     signAllPublications()
-    coordinates("io.github.olegnyr", "adoct-confluence", version.toString())
+    coordinates(group.toString(), "adoct-confluence", version.toString())
     pom {
         name.set("adoct-confluence")
         description.set("AsciiDoc ↔ Confluence conversion engine (parser + generate).")

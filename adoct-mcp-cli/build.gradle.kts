@@ -22,7 +22,7 @@ dependencies {
 
 application {
     applicationName = "adoct-mcp"
-    mainClass.set("ru.gitverse.adoct.mcp.cli.McpCli")
+    mainClass.set("io.github.adoct.mcp.cli.McpCli")
 }
 
 // В native-образ asciidoctorj/JRuby-стек не нужен (native-вход McpCliNative использует coreTools без
@@ -41,7 +41,7 @@ graalvmNative {
     binaries {
         named("main") {
             // Нативный вход НЕ ссылается на confluence_publish_adoc (asciidoctorj/JRuby несовместим с native).
-            mainClass.set("ru.gitverse.adoct.mcp.cli.McpCliNative")
+            mainClass.set("io.github.adoct.mcp.cli.McpCliNative")
             imageName.set("adoct-mcp")
             buildArgs.add("--no-fallback")
             buildArgs.add("--enable-url-protocols=http,https")
