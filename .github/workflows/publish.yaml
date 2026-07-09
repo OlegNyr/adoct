@@ -118,3 +118,37 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  # Публикация Maven-плагина (io.github.olegnyr:adoct-maven-plugin) и движка (adoct-confluence)
+  # в Maven Central (Central Portal). Идёт после build (тег обязан совпасть с pluginVersion) и только
+  # на релиз (пуш тега). Требует секретов репозитория (Settings -> Secrets -> Actions):
+  #   MAVEN_CENTRAL_USERNAME / MAVEN_CENTRAL_PASSWORD — user token из central.sonatype.com;
+  #   SIGNING_KEY — armored GPG-приватный ключ (весь блок целиком);
+  #   SIGNING_PASSWORD — passphrase ключа.
+  publish-central:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Publish to Maven Central
+        # Vanniktech читает креды/ключ из Gradle-свойств; пробрасываем их через ORG_GRADLE_PROJECT_*.
+        # --no-configuration-cache — remote-publish задачи не сериализуются в configuration cache.
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+        run: >
+          sh gradlew
+          :adoct-confluence:publishToMavenCentral
+          :adoct-maven-plugin:publishToMavenCentral
+          -Drelease=true --no-daemon --no-configuration-cache --stacktrace

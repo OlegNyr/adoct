@@ -37,7 +37,9 @@ dependencies {
 }
 
 mavenPublishing {
-    publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL)
+    // automaticRelease=true — деплой сразу публикуется (без ручного Publish в UI портала); так CI-релиз
+    // по тегу выкладывает артефакт на Central автоматически.
+    publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL, automaticRelease = true)
     signAllPublications()
     coordinates(group.toString(), "adoct-confluence", version.toString())
     pom {
