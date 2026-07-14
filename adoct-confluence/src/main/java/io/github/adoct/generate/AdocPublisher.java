@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -62,10 +63,14 @@ public final class AdocPublisher {
     private static final Pattern PAGE_ID = Pattern.compile("pageId=(\\d+)");
     /** «Человеческий» URL без номера страницы: {@code /display/SPACE/Title}. */
     private static final Pattern DISPLAY_URL = Pattern.compile("/display/([^/?#]+)/([^/?#]+)");
+    /** Строка шапки {@code :confluency-id: <значение>} в {@code .adoc}. */
+    private static final Pattern CONFLUENCY_ID_LINE = Pattern.compile("^:confluency-id:\\s*(\\S.*?)\\s*$");
 
     private final ConfluenceClient client;
     private Consumer<String> progress = message -> { };
     private Consumer<Path> onFileWritten = file -> { };
+    /** Резолвер {@code файл-цель → реальный заголовок его страницы Confluence}; строится на время публикации. */
+    private Function<Path, String> pageTitleResolver = file -> null;
 
     public AdocPublisher(ConfluenceClient client) {
         this.client = client;
@@ -97,11 +102,67 @@ public final class AdocPublisher {
      * @return краткий итог
      */
     public String publish(String url, Path source) throws IOException, InterruptedException {
+        this.pageTitleResolver = buildTitleResolver();
         Optional<String> urlPageId = resolvePageId(client, url);
         if (Files.isDirectory(source)) {
             return publishDir(source, urlPageId);
         }
         return publishFile(source, urlPageId);
+    }
+
+    /**
+     * Резолвер реального заголовка страницы Confluence по файлу-цели ссылки: читает {@code :confluency-id:}
+     * файла и, если это числовой id, берёт текущий заголовок страницы через REST (кэш на прогон). Иначе
+     * ({@code null}) вызывающий откатывается на заголовок из самого {@code .adoc}. Нужен, потому что при
+     * обновлении существующей страницы её заголовок в Confluence мы не меняем, а {@code = Заголовок} в
+     * файле может расходиться с ним.
+     */
+    private Function<Path, String> buildTitleResolver() {
+        Map<Path, String> cache = new HashMap<>();
+        return target -> {
+            Path key = target == null ? null : target.toAbsolutePath().normalize();
+            if (key == null) {
+                return null;
+            }
+            if (cache.containsKey(key)) {
+                return cache.get(key);
+            }
+            String title = fetchRealTitle(key);
+            cache.put(key, title);
+            return title;
+        };
+    }
+
+    /** Реальный заголовок страницы Confluence по {@code :confluency-id:} файла (числовому); иначе {@code null}. */
+    private String fetchRealTitle(Path target) {
+        String rawId = readConfluencyId(target);
+        if (rawId == null || !isNumericId(rawId)) {
+            return null;
+        }
+        try {
+            return client.getPage(rawId).title();
+        } catch (Exception e) {
+            log.debug("Не удалось получить заголовок страницы {} для межстраничной ссылки", rawId, e);
+            return null;
+        }
+    }
+
+    /** Значение {@code :confluency-id:} из шапки файла, либо {@code null}, если файла/атрибута нет. */
+    static String readConfluencyId(Path file) {
+        if (file == null || !Files.isRegularFile(file)) {
+            return null;
+        }
+        try {
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                Matcher matcher = CONFLUENCY_ID_LINE.matcher(line);
+                if (matcher.matches()) {
+                    return matcher.group(1).trim();
+                }
+            }
+        } catch (IOException ignored) {
+            // не прочитали — вернём null, откат на заголовок из файла
+        }
+        return null;
     }
 
     private String publishFile(Path file, Optional<String> urlPageId) throws IOException, InterruptedException {
@@ -283,9 +344,9 @@ public final class AdocPublisher {
         }
     }
 
-    private static RenderResult render(Path file, Document doc, AnchorIndex index, String spaceKey) {
-        return new StorageRenderer(PLANTUML_MACRO, file.getParent(), attribute(doc, "imagesdir"), index, file, spaceKey)
-                .render(doc);
+    private RenderResult render(Path file, Document doc, AnchorIndex index, String spaceKey) {
+        return new StorageRenderer(PLANTUML_MACRO, file.getParent(), attribute(doc, "imagesdir"),
+                index, file, spaceKey, pageTitleResolver).render(doc);
     }
 
     /**

@@ -15,6 +15,7 @@ import io.github.adoct.generate.model.RenderResult;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * Обходит AST AsciiDoctor и формирует тело страницы в Confluence storage format (XHTML).
@@ -48,22 +49,31 @@ public final class StorageRenderer {
         this(plantumlMacro, baseDir, imagesDir, anchorIndex, currentFile, "");
     }
 
-    /**
-     * @param plantumlMacro имя серверного макроса PlantUML (зависит от установленного плагина)
-     * @param baseDir       директория исходного {@code .adoc} — для разрешения путей картинок/файлов
-     * @param imagesDir     значение атрибута {@code imagesdir} (может быть пустым)
-     * @param anchorIndex   индекс якорей по всему набору публикуемых файлов (см. {@link AnchorIndex})
-     * @param currentFile   путь текущего {@code .adoc} — чтобы отличить ссылку-якорь в пределах своей
-     *                      страницы от ссылки на якорь, объявленный в другом файле
-     * @param spaceKey      ключ пространства Confluence — для {@code ri:space-key} в межстраничных ссылках
-     *                      (нужен новому редактору; пустой — атрибут не добавляется)
-     */
     public StorageRenderer(String plantumlMacro, Path baseDir, String imagesDir,
                            AnchorIndex anchorIndex, Path currentFile, String spaceKey) {
+        this(plantumlMacro, baseDir, imagesDir, anchorIndex, currentFile, spaceKey, null);
+    }
+
+    /**
+     * @param plantumlMacro      имя серверного макроса PlantUML (зависит от установленного плагина)
+     * @param baseDir            директория исходного {@code .adoc} — для разрешения путей картинок/файлов
+     * @param imagesDir          значение атрибута {@code imagesdir} (может быть пустым)
+     * @param anchorIndex        индекс якорей по всему набору публикуемых файлов (см. {@link AnchorIndex})
+     * @param currentFile        путь текущего {@code .adoc} — чтобы отличить ссылку-якорь в пределах своей
+     *                           страницы от ссылки на якорь, объявленный в другом файле
+     * @param spaceKey           ключ пространства Confluence — для {@code ri:space-key} в межстраничных
+     *                           ссылках (нужен новому редактору; пустой — атрибут не добавляется)
+     * @param pageTitleResolver  {@code файл-цель → реальный заголовок его страницы Confluence} (по
+     *                           {@code :confluency-id:}); {@code null} или {@code null}-результат — откат
+     *                           на заголовок из самого {@code .adoc}
+     */
+    public StorageRenderer(String plantumlMacro, Path baseDir, String imagesDir,
+                           AnchorIndex anchorIndex, Path currentFile, String spaceKey,
+                           Function<Path, String> pageTitleResolver) {
         this.plantumlMacro = plantumlMacro;
         this.baseDir = baseDir;
         this.imagesDir = imagesDir == null ? "" : imagesDir;
-        this.normalizer = new InlineNormalizer(baseDir, anchorIndex, currentFile, spaceKey);
+        this.normalizer = new InlineNormalizer(baseDir, anchorIndex, currentFile, spaceKey, pageTitleResolver);
     }
 
     public RenderResult render(Document document) {

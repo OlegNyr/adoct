@@ -35,15 +35,28 @@ final class InlineNormalizer {
     /** Инлайн-якорь от {@code [[id]]}: AsciiDoctor отдаёт пустой {@code <a id="...">}. */
     private static final Pattern ANCHOR_DEF = Pattern.compile("<a id=\"([^\"]*)\"\\s*></a>");
 
+    // Во всех паттернах ссылок после значения href допускаем произвольные атрибуты ({@code [^>]*}):
+    // AsciiDoctor добавляет к тегу {@code class="bare"} (для {@code link:x[]} без текста) или
+    // {@code class="role"} (для {@code link:x[Текст,role=...]}), и без этого межфайловые .adoc-ссылки
+    // не распознавались и утекали в обычный href.
+
     /** Внутренняя перекрёстная ссылка от {@code <<id,текст>>}: {@code <a href="#id">текст</a>}. */
-    private static final Pattern INTERNAL_LINK = Pattern.compile("<a href=\"#([^\"]+)\">(.*?)</a>");
+    private static final Pattern INTERNAL_LINK = Pattern.compile("<a href=\"#([^\"]+)\"[^>]*>(.*?)</a>");
 
     /** Межфайловая ссылка от {@code <<file.adoc#id,текст>>}: {@code <a href="file.adoc#id">текст</a>}. */
     private static final Pattern CROSS_DOC_LINK = Pattern.compile(
-            "<a href=\"([^\"#]+\\.adoc)(?:#([^\"]+))?\">(.*?)</a>", Pattern.CASE_INSENSITIVE);
+            "<a href=\"([^\"#]+\\.adoc)(?:#([^\"]+))?\"[^>]*>(.*?)</a>", Pattern.CASE_INSENSITIVE);
 
     /** Любая оставшаяся ссылка {@code <a href="X">текст</a>} (после .adoc и якорей). */
-    private static final Pattern FILE_LINK = Pattern.compile("<a href=\"([^\"]+)\">(.*?)</a>");
+    private static final Pattern FILE_LINK = Pattern.compile("<a href=\"([^\"]+)\"[^>]*>(.*?)</a>");
+
+    /**
+     * Моноширинное упоминание файла набора: {@code `file.adoc`} → {@code <code>file.adoc</code>}. Если
+     * путь указывает на существующий {@code .adoc} проекта — оборачиваем в ссылку на его страницу (сам
+     * {@code <code>} остаётся телом ссылки). В Confluence «.adoc» не существует — там страница.
+     */
+    private static final Pattern CODE_ADOC = Pattern.compile(
+            "<code>([^<>]+\\.adoc)(?:#([^<>]+))?</code>", Pattern.CASE_INSENSITIVE);
 
     /** URL со схемой ({@code http:}, {@code https:}, {@code mailto:} и т.п.) — такие ссылки не трогаем. */
     private static final Pattern URL_SCHEME = Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.\\-]*:");
@@ -57,12 +70,15 @@ final class InlineNormalizer {
     private final AnchorIndex anchorIndex;
     private final Path currentFile;
     private final String spaceKey;
+    private final Function<Path, String> pageTitleResolver;
 
-    InlineNormalizer(Path baseDir, AnchorIndex anchorIndex, Path currentFile, String spaceKey) {
+    InlineNormalizer(Path baseDir, AnchorIndex anchorIndex, Path currentFile, String spaceKey,
+                     Function<Path, String> pageTitleResolver) {
         this.baseDir = baseDir;
         this.anchorIndex = anchorIndex == null ? AnchorIndex.empty() : anchorIndex;
         this.currentFile = currentFile == null ? null : currentFile.toAbsolutePath().normalize();
         this.spaceKey = spaceKey == null ? "" : spaceKey;
+        this.pageTitleResolver = pageTitleResolver;
     }
 
     /** Нормализует фрагмент; найденные локальные файлы добавляет в {@code attachments}. */
@@ -75,6 +91,7 @@ final class InlineNormalizer {
         s = replaceAll(ANCHOR_DEF, s, m -> StorageFormat.anchorMacro(m.group(1)));
         s = replaceAll(INTERNAL_LINK, s, m -> internalLink(m.group(1), m.group(2)));
         s = replaceAll(FILE_LINK, s, m -> fileLink(m.group(1), m.group(2), m.group(), attachments));
+        s = replaceAll(CODE_ADOC, s, m -> codeAdocLink(m.group(1), m.group(2), m.group()));
         s = replaceAll(IMG_TAG, s, m -> inlineImage(m.group(), attachments));
         return s;
     }
@@ -123,9 +140,50 @@ final class InlineNormalizer {
 
     /** Межфайловая ссылка на другую страницу (по заголовку файла-цели), опционально с якорем. */
     private String crossDocLink(String path, String anchor, String body) {
-        String title = AdocPageTitle.fromFileOrName(resolveDoc(path), path);
-        String text = body == null || body.isBlank() ? title : body;
-        return StorageFormat.pageLink(title, anchor, spaceKey, text);
+        String title = resolvePageTitle(path);
+        return StorageFormat.pageLink(title, anchor, spaceKey, crossDocText(body, title, path, anchor));
+    }
+
+    /**
+     * Моноширинное упоминание {@code <code>file.adoc</code>}. Если путь — существующий {@code .adoc}
+     * набора, оборачиваем сам {@code <code>} в ссылку на его страницу; иначе (внешнее имя/пример) —
+     * оставляем как код.
+     */
+    private String codeAdocLink(String path, String anchor, String codeHtml) {
+        if (!Files.isRegularFile(resolveDoc(path))) {
+            return codeHtml;
+        }
+        return StorageFormat.pageLink(resolvePageTitle(path), anchor, spaceKey, codeHtml);
+    }
+
+    /**
+     * Заголовок страницы-цели: сперва через резолвер (реальный заголовок Confluence по
+     * {@code :confluency-id:} файла), иначе — заголовок из самого {@code .adoc} ({@link AdocPageTitle}).
+     * Резолвер нужен, потому что при обновлении существующей страницы её заголовок в Confluence мы не
+     * меняем — и {@code = Заголовок} в файле может с ним расходиться.
+     */
+    private String resolvePageTitle(String path) {
+        Path file = resolveDoc(path);
+        if (pageTitleResolver != null) {
+            String real = pageTitleResolver.apply(file);
+            if (real != null && !real.isBlank()) {
+                return real;
+            }
+        }
+        return AdocPageTitle.fromFileOrName(file, path);
+    }
+
+    /**
+     * Текст межстраничной ссылки: явный текст ({@code link:x[Текст]}) — как есть; пустой или равный сырой
+     * цели ({@code link:x[]} даёт {@code class="bare"} и телом сам путь) → заголовок страницы-цели, чтобы
+     * ссылка показывала имя страницы, а не {@code index.adoc}.
+     */
+    private static String crossDocText(String body, String title, String path, String anchor) {
+        if (body == null || body.isBlank()) {
+            return title;
+        }
+        String rawTarget = anchor == null || anchor.isBlank() ? path : path + "#" + anchor;
+        return body.trim().equals(rawTarget) ? title : body;
     }
 
     /**

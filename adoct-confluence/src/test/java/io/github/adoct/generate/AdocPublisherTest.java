@@ -1,8 +1,11 @@
 package io.github.adoct.generate;
 
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -14,6 +17,24 @@ import static org.junit.Assert.assertTrue;
 
 /** Чистые помощники {@link AdocPublisher} (без сети): резолв id, запись {@code :confluency-id:}, метки, хэш, дерево. */
 public class AdocPublisherTest {
+
+    @Rule
+    public TemporaryFolder tmp = new TemporaryFolder();
+
+    @Test
+    public void readConfluencyIdReadsHeaderValue() throws Exception {
+        Path file = tmp.getRoot().toPath().resolve("page.adoc");
+        Files.writeString(file, "= Заголовок\n:confluency-id: 12345\n\nтело\n", StandardCharsets.UTF_8);
+        assertEquals("12345", AdocPublisher.readConfluencyId(file));
+    }
+
+    @Test
+    public void readConfluencyIdNullWhenAbsent() throws Exception {
+        Path file = tmp.getRoot().toPath().resolve("page.adoc");
+        Files.writeString(file, "= Заголовок\n\nтело\n", StandardCharsets.UTF_8);
+        assertNull(AdocPublisher.readConfluencyId(file));
+        assertNull(AdocPublisher.readConfluencyId(tmp.getRoot().toPath().resolve("missing.adoc")));
+    }
 
     @Test
     public void insertConfluencyIdAfterTitle() {
