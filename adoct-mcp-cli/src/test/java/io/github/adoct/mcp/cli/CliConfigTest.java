@@ -46,4 +46,33 @@ public class CliConfigTest {
         assertEquals(7337, c.port);
         assertTrue(c.endpoints.isEmpty());
     }
+
+    @Test
+    public void expandEnvSubstitutesAndLeavesLiteral() {
+        assertEquals("literal-token", CliConfig.expandEnv("literal-token"));
+        assertEquals("", CliConfig.expandEnv("${DEFINITELY_UNSET_VAR_XYZ_123}"));
+        // PATH присутствует в окружении на всех ОС — проверяем реальную подстановку
+        String path = System.getenv("PATH");
+        if (path != null && !path.isBlank()) {
+            assertEquals(path, CliConfig.expandEnv("${PATH}"));
+            assertEquals("Bearer " + path, CliConfig.expandEnv("Bearer ${PATH}"));
+        }
+    }
+
+    @Test
+    public void endpointTokenExpandsFromEnv() throws Exception {
+        String path = System.getenv("PATH");
+        if (path == null || path.isBlank()) {
+            return; // без PATH проверять нечем
+        }
+        Path file = Files.createTempFile("mcpcfg", ".json");
+        Files.writeString(file, "{\"endpoints\":[{\"host\":\"http://h\",\"token\":\"${PATH}\"}]}");
+        try {
+            CliConfig c = CliConfig.load(new String[] {"--config", file.toString()});
+            assertEquals(1, c.endpoints.size());
+            assertEquals(path, c.endpoints.get(0).token());
+        } finally {
+            Files.deleteIfExists(file);
+        }
+    }
 }

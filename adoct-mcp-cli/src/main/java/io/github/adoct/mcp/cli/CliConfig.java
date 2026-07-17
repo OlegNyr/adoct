@@ -12,11 +12,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Конфигурация CLI MCP-сервера. Источники (по возрастанию приоритета): JSON-файл {@code --config},
  * переменные окружения {@code MCP_*}, аргументы командной строки. JSON разбирается деревом (без
- * рефлексии — дружелюбно к native-image).
+ * рефлексии — дружелюбно к native-image). В host/token эндпоинтов поддержана подстановка
+ * {@code ${ENV_VAR}} — токены можно держать в переменных окружения, а не в самом JSON.
  */
 final class CliConfig {
 
@@ -53,11 +56,13 @@ final class CliConfig {
         defaultConfluenceSpace = text(root, "defaultConfluenceSpace", defaultConfluenceSpace);
 
         for (JsonNode e : root.path("endpoints")) {
-            String host = e.path("host").asText("");
+            // host/token поддерживают подстановку ${ENV_VAR} — чтобы держать токены в переменных
+            // окружения, а не в самом JSON.
+            String host = expandEnv(e.path("host").asText(""));
             if (!host.isBlank()) {
                 AtlassianKind kind = AtlassianKind.parse(e.path("kind").asText(null), AtlassianKind.detect(host));
                 boolean primary = e.path("default").asBoolean(e.path("primary").asBoolean(false));
-                endpoints.add(new AtlassianEndpoint(host, e.path("token").asText(""), kind, primary));
+                endpoints.add(new AtlassianEndpoint(host, expandEnv(e.path("token").asText("")), kind, primary));
             }
         }
         for (JsonNode m : root.path("team")) {
@@ -106,6 +111,27 @@ final class CliConfig {
                 default -> { /* игнорируем неизвестные */ }
             }
         }
+    }
+
+    /** Ссылка на переменную окружения в значении конфига: {@code ${VAR}}. */
+    private static final Pattern ENV_REF = Pattern.compile("\\$\\{([A-Za-z_][A-Za-z0-9_]*)}");
+
+    /**
+     * Подставляет значения переменных окружения вместо {@code ${VAR}} в строке (несуществующая
+     * переменная → пустая строка). Позволяет держать токены/хосты в окружении, а не в JSON-файле.
+     */
+    static String expandEnv(String value) {
+        if (value == null || !value.contains("${")) {
+            return value;
+        }
+        Matcher matcher = ENV_REF.matcher(value);
+        StringBuilder sb = new StringBuilder();
+        while (matcher.find()) {
+            String replacement = System.getenv().getOrDefault(matcher.group(1), "");
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(sb);
+        return sb.toString();
     }
 
     private static String text(JsonNode root, String field, String fallback) {

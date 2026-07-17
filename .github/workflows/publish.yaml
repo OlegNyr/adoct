@@ -52,21 +52,36 @@ jobs:
         # buildPlugin — задача модуля плагина (:adoct-idea), указываем явно.
         run: sh gradlew :adoct-idea:buildPlugin -Drelease=true --no-daemon --stacktrace
 
-      - name: Locate distribution
+      # Самодостаточный исполняемый JAR MCP-сервера (java -jar adoct-mcp.jar) — для тех, кто
+      # запускает MCP без IDE-плагина. Прикладывается в Release как отдельный ассет.
+      - name: Build MCP fat JAR
+        run: sh gradlew :adoct-mcp-jar:shadowJar -Drelease=true --no-daemon --stacktrace
+
+      - name: Locate distributions
         run: |
           ZIP="$(ls adoct-idea/build/distributions/*.zip | head -n1)"
           echo "ZIP_PATH=$ZIP" >> "$GITHUB_ENV"
           echo "ZIP_NAME=$(basename "$ZIP")" >> "$GITHUB_ENV"
+          # shadowJar (base name adoct-mcp), а не обычный jar (adoct-mcp-jar-*).
+          JAR="$(ls adoct-mcp-jar/build/libs/adoct-mcp-[0-9]*.jar | head -n1)"
+          echo "JAR_PATH=$JAR" >> "$GITHUB_ENV"
+          echo "JAR_NAME=$(basename "$JAR")" >> "$GITHUB_ENV"
 
-      # Скачиваемый артефакт сборки (для ручных запусков без релиза).
+      # Скачиваемые артефакты сборки (для ручных запусков без релиза).
       - name: Upload plugin zip artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ZIP_NAME }}
           path: ${{ env.ZIP_PATH }}
 
+      - name: Upload MCP jar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.JAR_NAME }}
+          path: ${{ env.JAR_PATH }}
+
       # GitHub Release — для скачивания людьми. GITHUB_TOKEN берётся автоматически.
-      - name: Create release & upload zip
+      - name: Create release & upload assets
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
@@ -77,7 +92,11 @@ jobs:
 
             Установка в IDE: Settings -> Plugins -> (шестерёнка) -> Manage Plugin Repositories -> +
             ${{ env.PAGES_BASE }}/updatePlugins.xml
-          files: ${{ env.ZIP_PATH }}
+
+            MCP-сервер без IDE: скачайте ${{ env.JAR_NAME }} и запустите `java -jar ${{ env.JAR_NAME }}`.
+          files: |
+            ${{ env.ZIP_PATH }}
+            ${{ env.JAR_PATH }}
 
       # Pages-пэйлоад: index.html + .nojekyll + updatePlugins.xml + сам .zip.
       # updatePlugins.xml указывает на ${PAGES_BASE}/${ZIP_NAME} — публичный URL на Pages.
