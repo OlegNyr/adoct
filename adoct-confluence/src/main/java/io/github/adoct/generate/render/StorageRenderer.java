@@ -51,7 +51,13 @@ public final class StorageRenderer {
 
     public StorageRenderer(String plantumlMacro, Path baseDir, String imagesDir,
                            AnchorIndex anchorIndex, Path currentFile, String spaceKey) {
-        this(plantumlMacro, baseDir, imagesDir, anchorIndex, currentFile, spaceKey, null);
+        this(plantumlMacro, baseDir, imagesDir, anchorIndex, currentFile, spaceKey, null, null);
+    }
+
+    public StorageRenderer(String plantumlMacro, Path baseDir, String imagesDir,
+                           AnchorIndex anchorIndex, Path currentFile, String spaceKey,
+                           Function<Path, String> pageTitleResolver) {
+        this(plantumlMacro, baseDir, imagesDir, anchorIndex, currentFile, spaceKey, pageTitleResolver, null);
     }
 
     /**
@@ -66,14 +72,18 @@ public final class StorageRenderer {
      * @param pageTitleResolver  {@code файл-цель → реальный заголовок его страницы Confluence} (по
      *                           {@code :confluency-id:}); {@code null} или {@code null}-результат — откат
      *                           на заголовок из самого {@code .adoc}
+     * @param rootDir            корень публикации (папка, переданная в {@code publish}); {@code .adoc}-цели
+     *                           ссылок, не найденные рядом с файлом, ищутся относительно него ({@code null} —
+     *                           только относительно папки файла)
      */
     public StorageRenderer(String plantumlMacro, Path baseDir, String imagesDir,
                            AnchorIndex anchorIndex, Path currentFile, String spaceKey,
-                           Function<Path, String> pageTitleResolver) {
+                           Function<Path, String> pageTitleResolver, Path rootDir) {
         this.plantumlMacro = plantumlMacro;
         this.baseDir = baseDir;
         this.imagesDir = imagesDir == null ? "" : imagesDir;
-        this.normalizer = new InlineNormalizer(baseDir, anchorIndex, currentFile, spaceKey, pageTitleResolver);
+        this.normalizer = new InlineNormalizer(
+                baseDir, anchorIndex, currentFile, spaceKey, pageTitleResolver, rootDir);
     }
 
     public RenderResult render(Document document) {

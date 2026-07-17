@@ -22,6 +22,32 @@ public class AdocPublisherTest {
     public TemporaryFolder tmp = new TemporaryFolder();
 
     @Test
+    public void inferPublishRootWalksUpIndexAdocChain() throws Exception {
+        // doc/index.adoc, doc/03-architecture/index.adoc, doc/03-architecture/dbo-draft/index.adoc,
+        // но kcenter (родитель doc) — без index.adoc → корень = doc.
+        Path kcenter = tmp.getRoot().toPath();
+        Path doc = kcenter.resolve("doc");
+        Path arch = doc.resolve("03-architecture");
+        Path dbo = arch.resolve("dbo-draft");
+        Path integration = dbo.resolve("integration");
+        Files.createDirectories(integration);
+        for (Path folder : List.of(doc, arch, dbo)) {
+            Files.writeString(folder.resolve("index.adoc"), "= Узел\n", StandardCharsets.UTF_8);
+        }
+        // integration без index.adoc, но подъём идёт по родителям, а не по самой папке файла
+        assertEquals(doc, AdocPublisher.inferPublishRoot(integration));
+    }
+
+    @Test
+    public void inferPublishRootStaysWhenNoParentIndex() throws Exception {
+        Path dir = tmp.getRoot().toPath().resolve("solo");
+        Files.createDirectories(dir);
+        // у родителя dir нет index.adoc → корень = сама папка файла
+        assertEquals(dir, AdocPublisher.inferPublishRoot(dir));
+        assertNull(AdocPublisher.inferPublishRoot(null));
+    }
+
+    @Test
     public void readConfluencyIdReadsHeaderValue() throws Exception {
         Path file = tmp.getRoot().toPath().resolve("page.adoc");
         Files.writeString(file, "= Заголовок\n:confluency-id: 12345\n\nтело\n", StandardCharsets.UTF_8);

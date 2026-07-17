@@ -30,6 +30,10 @@ public class CodeMentionLinkRenderTest {
     public TemporaryFolder tmp = new TemporaryFolder();
 
     private RenderResult render(Path main, Function<Path, String> titleResolver) throws Exception {
+        return render(main, titleResolver, null);
+    }
+
+    private RenderResult render(Path main, Function<Path, String> titleResolver, Path rootDir) throws Exception {
         try (Asciidoctor asciidoctor = Asciidoctor.Factory.create()) {
             String text = Files.readString(main, StandardCharsets.UTF_8);
             Document doc = asciidoctor.load(text, Options.builder()
@@ -38,7 +42,7 @@ public class CodeMentionLinkRenderTest {
                     .attributes(Attributes.builder().attribute("outfilesuffix", ".adoc").build())
                     .build());
             return new StorageRenderer("plantuml", main.getParent(), "",
-                    AnchorIndex.empty(), main, "DOC", titleResolver).render(doc);
+                    AnchorIndex.empty(), main, "DOC", titleResolver, rootDir).render(doc);
         }
     }
 
@@ -55,9 +59,10 @@ public class CodeMentionLinkRenderTest {
     @Test
     public void codeMentionOfExistingAdocBecomesPageLink() throws Exception {
         String xhtml = render(scaffold("Наверх: `index.adoc`."), null).xhtml();
-        // <code> остаётся телом ссылки, но обёрнут в ac:link на страницу-цель
+        // текст ссылки — заголовок страницы, а НЕ имя файла index.adoc
         assertContains(xhtml, "<ac:link><ri:page ri:content-title=\"Узел раздела\" ri:space-key=\"DOC\"/>"
-                + "<ac:link-body><code>index.adoc</code></ac:link-body></ac:link>");
+                + "<ac:link-body>Узел раздела</ac:link-body></ac:link>");
+        assertNotContains(xhtml, "index.adoc");
     }
 
     @Test
@@ -79,7 +84,33 @@ public class CodeMentionLinkRenderTest {
         assertContains(xhtml, "ri:content-title=\"Настоящее имя в Confluence\"");
         assertNotContains(xhtml, "ri:content-title=\"Дочерняя страница\"");
         assertContains(xhtml, "<ac:link-body>тут</ac:link-body>");
-        assertContains(xhtml, "<ac:link-body><code>child.adoc</code></ac:link-body>");
+        // моноширинное `child.adoc` → текст ссылки = реальный заголовок, имени файла нет
+        assertContains(xhtml, "<ac:link-body>Настоящее имя в Confluence</ac:link-body>");
+        assertNotContains(xhtml, "child.adoc");
+    }
+
+    @Test
+    public void rootRelativeCodeMentionResolvesFromPublishRoot() throws Exception {
+        // Раскладка как у пользователя: файл глубоко, а путь в ссылке — от корня публикации.
+        Path root = tmp.getRoot().toPath();
+        Files.createDirectories(root.resolve("03-architecture"));
+        Files.writeString(root.resolve("03-architecture").resolve("security.adoc"),
+                "= Безопасность\n\nТекст.\n", StandardCharsets.UTF_8);
+        Path deep = root.resolve("03-architecture").resolve("dbo-draft").resolve("integration");
+        Files.createDirectories(deep);
+        Path main = deep.resolve("audit.adoc");
+        Files.writeString(main,
+                "= Аудит\n\n== См. также\n\n* `03-architecture/security.adoc` — требования\n",
+                StandardCharsets.UTF_8);
+
+        // без корня — не находит (путь не относительно папки файла) → остаётся кодом
+        assertContains(render(main, null, null).xhtml(), "<code>03-architecture/security.adoc</code>");
+
+        // с корнем публикации — резолвится в ссылку на страницу security.adoc
+        String withRoot = render(main, null, root).xhtml();
+        assertContains(withRoot, "<ri:page ri:content-title=\"Безопасность\" ri:space-key=\"DOC\"/>");
+        assertContains(withRoot, "<ac:link-body>Безопасность</ac:link-body>");
+        assertNotContains(withRoot, "<code>03-architecture/security.adoc</code>");
     }
 
     private static void assertContains(String xhtml, String fragment) {

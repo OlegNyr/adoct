@@ -71,6 +71,8 @@ public final class AdocPublisher {
     private Consumer<Path> onFileWritten = file -> { };
     /** Резолвер {@code файл-цель → реальный заголовок его страницы Confluence}; строится на время публикации. */
     private Function<Path, String> pageTitleResolver = file -> null;
+    /** Корень публикации (папка/родитель файла из {@code publish}) — для резолва ссылок «от корня набора». */
+    private Path publishRoot;
 
     public AdocPublisher(ConfluenceClient client) {
         this.client = client;
@@ -103,6 +105,8 @@ public final class AdocPublisher {
      */
     public String publish(String url, Path source) throws IOException, InterruptedException {
         this.pageTitleResolver = buildTitleResolver();
+        // Для папки корень = она сама; для одиночного файла — вверх по цепочке index.adoc.
+        this.publishRoot = Files.isDirectory(source) ? source : inferPublishRoot(source.getParent());
         Optional<String> urlPageId = resolvePageId(client, url);
         if (Files.isDirectory(source)) {
             return publishDir(source, urlPageId);
@@ -145,6 +149,30 @@ public final class AdocPublisher {
             log.debug("Не удалось получить заголовок страницы {} для межстраничной ссылки", rawId, e);
             return null;
         }
+    }
+
+    /** Предел подъёма при поиске корня публикации для одиночного файла (страховка от бесконечного дерева). */
+    private static final int ROOT_SEARCH_LIMIT = 10;
+
+    /**
+     * Корень набора для одиночного файла: поднимаемся вверх, пока родительская папка содержит
+     * {@code index.adoc} (естественная граница дерева документации — по нему резолвятся ссылки вида
+     * {@code 03-architecture/security.adoc}). Останавливаемся на первой папке без {@code index.adoc}
+     * либо по достижении {@link #ROOT_SEARCH_LIMIT}. Для файла без такой структуры корень = его папка.
+     */
+    static Path inferPublishRoot(Path fileFolder) {
+        if (fileFolder == null) {
+            return null;
+        }
+        Path root = fileFolder;
+        for (int level = 0; level < ROOT_SEARCH_LIMIT; level++) {
+            Path parent = root.getParent();
+            if (parent == null || !Files.isRegularFile(parent.resolve(INDEX_FILE))) {
+                break;
+            }
+            root = parent;
+        }
+        return root;
     }
 
     /** Значение {@code :confluency-id:} из шапки файла, либо {@code null}, если файла/атрибута нет. */
@@ -346,7 +374,7 @@ public final class AdocPublisher {
 
     private RenderResult render(Path file, Document doc, AnchorIndex index, String spaceKey) {
         return new StorageRenderer(PLANTUML_MACRO, file.getParent(), attribute(doc, "imagesdir"),
-                index, file, spaceKey, pageTitleResolver).render(doc);
+                index, file, spaceKey, pageTitleResolver, publishRoot).render(doc);
     }
 
     /**

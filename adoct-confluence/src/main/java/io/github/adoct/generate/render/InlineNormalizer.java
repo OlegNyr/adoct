@@ -71,14 +71,16 @@ final class InlineNormalizer {
     private final Path currentFile;
     private final String spaceKey;
     private final Function<Path, String> pageTitleResolver;
+    private final Path rootDir;
 
     InlineNormalizer(Path baseDir, AnchorIndex anchorIndex, Path currentFile, String spaceKey,
-                     Function<Path, String> pageTitleResolver) {
+                     Function<Path, String> pageTitleResolver, Path rootDir) {
         this.baseDir = baseDir;
         this.anchorIndex = anchorIndex == null ? AnchorIndex.empty() : anchorIndex;
         this.currentFile = currentFile == null ? null : currentFile.toAbsolutePath().normalize();
         this.spaceKey = spaceKey == null ? "" : spaceKey;
         this.pageTitleResolver = pageTitleResolver;
+        this.rootDir = rootDir == null ? null : rootDir.toAbsolutePath().normalize();
     }
 
     /** Нормализует фрагмент; найденные локальные файлы добавляет в {@code attachments}. */
@@ -140,20 +142,42 @@ final class InlineNormalizer {
 
     /** Межфайловая ссылка на другую страницу (по заголовку файла-цели), опционально с якорем. */
     private String crossDocLink(String path, String anchor, String body) {
-        String title = resolvePageTitle(path);
+        String title = pageTitleFor(resolveAdoc(path), path);
         return StorageFormat.pageLink(title, anchor, spaceKey, crossDocText(body, title, path, anchor));
     }
 
     /**
      * Моноширинное упоминание {@code <code>file.adoc</code>}. Если путь — существующий {@code .adoc}
-     * набора, оборачиваем сам {@code <code>} в ссылку на его страницу; иначе (внешнее имя/пример) —
+     * набора, заменяем на ссылку на его страницу с текстом = заголовком этой страницы (имя файла в
+     * тексте не показываем — в Confluence «.adoc» нет, есть страница). Иначе (внешнее имя/пример) —
      * оставляем как код.
      */
     private String codeAdocLink(String path, String anchor, String codeHtml) {
-        if (!Files.isRegularFile(resolveDoc(path))) {
+        Path file = resolveAdoc(path);
+        if (!Files.isRegularFile(file)) {
             return codeHtml;
         }
-        return StorageFormat.pageLink(resolvePageTitle(path), anchor, spaceKey, codeHtml);
+        String title = pageTitleFor(file, path);
+        return StorageFormat.pageLink(title, anchor, spaceKey, StorageFormat.escapeText(title));
+    }
+
+    /**
+     * Резолвит {@code .adoc}-цель ссылки: сперва относительно папки текущего файла, затем относительно
+     * корня публикации (в доках пути к другим страницам часто задают от корня набора). Возвращает
+     * существующий файл, если нашли, иначе — base-вариант (для fallback-заголовка по имени файла).
+     */
+    private Path resolveAdoc(String path) {
+        Path fromBase = resolveDoc(path);
+        if (Files.isRegularFile(fromBase)) {
+            return fromBase;
+        }
+        if (rootDir != null) {
+            Path fromRoot = rootDir.resolve(path).normalize();
+            if (Files.isRegularFile(fromRoot)) {
+                return fromRoot;
+            }
+        }
+        return fromBase;
     }
 
     /**
@@ -162,8 +186,7 @@ final class InlineNormalizer {
      * Резолвер нужен, потому что при обновлении существующей страницы её заголовок в Confluence мы не
      * меняем — и {@code = Заголовок} в файле может с ним расходиться.
      */
-    private String resolvePageTitle(String path) {
-        Path file = resolveDoc(path);
+    private String pageTitleFor(Path file, String path) {
         if (pageTitleResolver != null) {
             String real = pageTitleResolver.apply(file);
             if (real != null && !real.isBlank()) {
