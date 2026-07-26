@@ -62,16 +62,15 @@ public final class IncludeMacro extends AbstractNodeMacro {
         if (StringUtils.isBlank(title)) {
             return pageLink(link, ctx);
         }
-        String directive = "include::%s/index.adoc[]".formatted(PageFolder.sanitize(title));
-        return List.of(new Block.RawBlock(directive));
+        return List.of(new Block.PageInclude(PageFolder.sanitize(title)));
     }
 
     /** Ссылка на исходную страницу (для excerpt-include и как fallback). */
     private List<Block> pageLink(Element link, BuildContext ctx) {
-        String rendered = LinkRenderer.render(link, ctx.metadata());
+        List<Inline> rendered = LinkRenderer.render(link, ctx.metadata());
         if (rendered.isEmpty()) {
             return List.of();
         }
-        return List.of(new Block.Paragraph(List.of(new Inline.Raw(rendered))));
+        return List.of(new Block.Paragraph(rendered));
     }
 }

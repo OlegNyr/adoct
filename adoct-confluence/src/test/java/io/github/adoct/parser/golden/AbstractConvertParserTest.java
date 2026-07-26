@@ -3,6 +3,7 @@ package io.github.adoct.parser.golden;
 import org.junit.After;
 import org.junit.Before;
 import io.github.adoct.parser.ConvertStorageToAdoc;
+import io.github.adoct.parser.OutputFormat;
 import io.github.adoct.parser.model.MetadataKey;
 
 import java.io.IOException;
@@ -52,6 +53,11 @@ public abstract class AbstractConvertParserTest {
     }
 
     protected String convert(String storageBody, Map<MetadataKey, Object> extra) throws IOException {
+        return convert(storageBody, extra, OutputFormat.ADOC);
+    }
+
+    protected String convert(String storageBody, Map<MetadataKey, Object> extra, OutputFormat format)
+            throws IOException {
         Map<MetadataKey, Object> metadata = new HashMap<>();
         metadata.put(MetadataKey.TITLE, "Документ");
         metadata.put(MetadataKey.IMAGE, "attache");
@@ -62,8 +68,9 @@ public abstract class AbstractConvertParserTest {
         metadata.putAll(extra);
 
         ConvertStorageToAdoc converter = new ConvertStorageToAdoc(storageBody, null, tmp);
+        converter.setFormat(format);
         converter.convert(metadata, tmp);
 
-        return Files.readString(tmp.resolve("index.adoc")).replace("\r\n", "\n");
+        return Files.readString(tmp.resolve(format.indexFileName())).replace("\r\n", "\n");
     }
 }

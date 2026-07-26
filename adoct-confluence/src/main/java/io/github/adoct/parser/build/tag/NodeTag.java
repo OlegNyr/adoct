@@ -26,16 +26,15 @@ public interface NodeTag {
     List<Block> build(Element element, BuildContext ctx);
 
     /**
-     * Абзац из инлайна с одной оговоркой: одиночная инлайн-картинка повышается до блочной {@code image::}.
+     * Абзац из инлайна с одной оговоркой: одиночная инлайн-картинка повышается до блочной.
      * Общий хелпер для тегов, дающих абзац (p, ac:link, time, comment-marker).
      */
     static List<Block> paragraph(List<Inline> inline) {
         if (inline.isEmpty()) {
             return List.of();
         }
-        if (inline.size() == 1 && inline.getFirst() instanceof Inline.Raw r
-            && r.adoc().startsWith("image:") && !r.adoc().startsWith("image::")) {
-            return List.of(new Block.RawBlock("image::" + r.adoc().substring("image:".length())));
+        if (inline.size() == 1 && inline.getFirst() instanceof Inline.Image im) {
+            return List.of(new Block.Image(im.target(), im.alt(), im.width(), im.height(), null));
         }
         return List.of(new Block.Paragraph(inline));
     }

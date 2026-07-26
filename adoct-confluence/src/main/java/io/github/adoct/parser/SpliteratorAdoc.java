@@ -10,16 +10,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Режет большой документ на файлы по заголовкам уровня 2. Формат-специфику (расширение файлов, директиву
+ * вставки под-файла в корневой) держит {@link OutputFormat}: AsciiDoc использует {@code include::} и
+ * {@code :imagesdir:}, Markdown — обычную ссылку (трансклюзии в GFM нет).
+ */
 public class SpliteratorAdoc {
 
-
     public static void saveSplit(Path destination, String fileName, String source, String split,
-                                 Map<MetadataKey, Object> metadata) throws IOException {
+                                 Map<MetadataKey, Object> metadata, OutputFormat format) throws IOException {
         List<Item> res = new ArrayList<>();
         List<String> lines = source.lines().toList();
         Item main = new Item(fileName, new ArrayList<>());
         // main всегда в результате: документ без split-заголовков остаётся одним файлом
-        // (иначе при отсутствии '==' не записывалось бы ни одного файла — потеря всего вывода).
+        // (иначе при отсутствии заголовков не записывалось бы ни одного файла — потеря всего вывода).
         res.add(main);
         Item cur = main;
         String prefix = split + " ";
@@ -27,14 +31,16 @@ public class SpliteratorAdoc {
         for (String line : lines) {
             if (line.startsWith(prefix)) {
                 String title = line.substring(prefix.length());
-                String fileName1 = index++ + "_" + FilenameUtils.normalize(title) + ".adoc";
+                String childName = index++ + "_" + FilenameUtils.normalize(title) + "." + format.extension();
 
-                cur = new Item(fileName1, new ArrayList<>());
+                cur = new Item(childName, new ArrayList<>());
                 res.add(cur);
-                cur.content().add(":imagesdir: ./%s".formatted(metadata.get(MetadataKey.IMAGE)));
+                if (format == OutputFormat.ADOC) {
+                    cur.content().add(":imagesdir: ./%s".formatted(metadata.get(MetadataKey.IMAGE)));
+                }
                 cur.content().add(line);
                 main.content().add("");
-                main.content().add("include::%s[]".formatted(cur.fileName()));
+                main.content().add(reference(childName, title, format));
             } else {
                 cur.content().add(line);
             }
@@ -44,6 +50,12 @@ public class SpliteratorAdoc {
                     String.join(System.lineSeparator(), item.content())
             );
         }
+    }
+
+    /** Ссылка на под-файл из корневого документа: AsciiDoc — {@code include::}, Markdown — обычная ссылка. */
+    private static String reference(String childName, String title, OutputFormat format) {
+        return format == OutputFormat.MD ? "- [%s](%s)".formatted(title, childName)
+                : "include::%s[]".formatted(childName);
     }
 
     record Item(String fileName, List<String> content) {

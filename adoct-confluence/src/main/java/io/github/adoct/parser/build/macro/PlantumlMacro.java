@@ -28,14 +28,8 @@ public final class PlantumlMacro extends AbstractNodeMacro {
     public List<Block> build(String name, Map<String, String> params, Element body, BuildContext ctx) {
         String text = body.text();
         String title = blankToNull(params.get("title"));
-        StringBuilder sb = new StringBuilder();
-        if (title != null) {
-            sb.append('.').append(title).append('\n');
-        }
-        sb.append("[plantuml, format=\"png\"]\n----\n");
         String fileName = (title == null ? "plantuml" : FilenameUtils.normalize(title)) + "_%d.puml".formatted(index++);
-        sb.append(externalize(text, ctx, fileName));
-        sb.append("\n----");
-        return List.of(new Block.RawBlock(sb.toString()));
+        String includePath = externalizePath(text, ctx, fileName);
+        return List.of(new Block.CodeBlock("plantuml", title, text, includePath));
     }
 }

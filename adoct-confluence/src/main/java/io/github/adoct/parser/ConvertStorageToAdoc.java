@@ -8,7 +8,6 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-import io.github.adoct.parser.ast.AsciiDocWriter;
 import io.github.adoct.parser.ast.Block;
 import io.github.adoct.parser.build.AstBuilder;
 import io.github.adoct.parser.model.LinksAttachment;
@@ -29,11 +28,11 @@ import java.util.Set;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 /**
- * Конвертер Confluence storage-HTML → AsciiDoc.
+ * Конвертер Confluence storage-HTML → AsciiDoc или Markdown.
  * <p>
- * Парсит HTML через Jsoup, строит промежуточное дерево {@link Block} ({@link AstBuilder}) и
- * сериализует его через {@link AsciiDocWriter}. Дисциплину пустых строк и раскладку таблиц держит
- * writer, поэтому строковые пост-процессоры не нужны.
+ * Парсит HTML через Jsoup, строит формат-нейтральное дерево {@link Block} ({@link AstBuilder}) и
+ * сериализует его writer'ом выбранного {@link OutputFormat} (AsciiDoc по умолчанию). Дисциплину пустых
+ * строк и раскладку таблиц держит writer, поэтому строковые пост-процессоры не нужны.
  */
 public class ConvertStorageToAdoc {
 
@@ -45,6 +44,10 @@ public class ConvertStorageToAdoc {
     @Setter
     @Getter
     private boolean printToStdout = false;
+    /** Целевой формат экспорта (AsciiDoc по умолчанию). */
+    @Setter
+    @Getter
+    private OutputFormat format = OutputFormat.ADOC;
 
     public ConvertStorageToAdoc(String content, String view, Path destination) {
         this.content = content;
@@ -138,7 +141,7 @@ public class ConvertStorageToAdoc {
 
     @SneakyThrows
     public void convert(Map<MetadataKey, Object> metadata, Path attachment) {
-        Path index = destination.resolve("index.adoc");
+        Path index = destination.resolve(format.indexFileName());
         String res = render(metadata, attachment, destination.resolve((String) metadata.get(MetadataKey.IMAGE)));
 
         if (printToStdout) {
@@ -147,7 +150,7 @@ public class ConvertStorageToAdoc {
         if (StringUtils.countMatches(res, "\n") < 700) {
             Files.writeString(index, res);
         } else {
-            SpliteratorAdoc.saveSplit(destination, "index.adoc", res, "==", metadata);
+            SpliteratorAdoc.saveSplit(destination, format.indexFileName(), res, format.splitHeading(), metadata, format);
         }
     }
 
@@ -183,11 +186,52 @@ public class ConvertStorageToAdoc {
         boolean isColor = (Boolean) metadata.getOrDefault(MetadataKey.COLOR, Boolean.FALSE);
         Elements bodyChildren = document.getElementsByTag("body").getFirst().children();
         List<Block> blocks = new AstBuilder(attachment, imagesDir).build(bodyChildren, metadata, isColor);
-        String body = new AsciiDocWriter().write(blocks);
+        String image = (String) metadata.get(MetadataKey.IMAGE);
+        String body = format.writer(image).write(blocks);
+        return format == OutputFormat.MD ? markdownHeader(metadata, body) : asciiDocHeader(metadata, image, body);
+    }
 
+    private static String asciiDocHeader(Map<MetadataKey, Object> metadata, String image, String body) {
         Object pageId = metadata.get(MetadataKey.PAGE_ID);
         String idLine = pageId == null ? "" : ":confluency-id: %s\n".formatted(pageId);
-        return "= %s\n%s:toc: macro\n:imagesdir: ./%s\n\n%s\n".formatted(
-                metadata.get(MetadataKey.TITLE), idLine, metadata.get(MetadataKey.IMAGE), body);
+        String version = version(metadata);
+        String versionLine = version == null ? "" : ":confluency-version: %s\n".formatted(version);
+        List<String> labels = labels(metadata);
+        String keywords = labels.isEmpty() ? "" : ":keywords: %s\n".formatted(String.join(", ", labels));
+        return "= %s\n%s%s%s:toc: macro\n:imagesdir: ./%s\n\n%s\n".formatted(
+                metadata.get(MetadataKey.TITLE), idLine, versionLine, keywords, image, body);
+    }
+
+    private static String markdownHeader(Map<MetadataKey, Object> metadata, String body) {
+        Object pageId = metadata.get(MetadataKey.PAGE_ID);
+        String version = version(metadata);
+        List<String> labels = labels(metadata);
+        StringBuilder front = new StringBuilder();
+        if (pageId != null || version != null || !labels.isEmpty()) {
+            front.append("---\n");
+            if (pageId != null) {
+                front.append("confluency-id: ").append(pageId).append('\n');
+            }
+            if (version != null) {
+                front.append("confluency-version: ").append(version).append('\n');
+            }
+            if (!labels.isEmpty()) {
+                front.append("tags:\n");
+                labels.forEach(l -> front.append("  - ").append(l).append('\n'));
+            }
+            front.append("---\n\n");
+        }
+        return "%s# %s\n\n%s\n".formatted(front, metadata.get(MetadataKey.TITLE), body);
+    }
+
+    private static String version(Map<MetadataKey, Object> metadata) {
+        Object version = metadata.get(MetadataKey.VERSION);
+        return version == null || version.toString().isBlank() ? null : version.toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> labels(Map<MetadataKey, Object> metadata) {
+        Object labels = metadata.get(MetadataKey.LABELS);
+        return labels instanceof List<?> list ? (List<String>) list : List.of();
     }
 }

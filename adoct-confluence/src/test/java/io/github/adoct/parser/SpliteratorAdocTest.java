@@ -57,7 +57,7 @@ public class SpliteratorAdocTest {
                 "текст два");
 
         SpliteratorAdoc.saveSplit(tmp, "index.adoc", source, "==",
-                Map.of(MetadataKey.IMAGE, "attache"));
+                Map.of(MetadataKey.IMAGE, "attache"), OutputFormat.ADOC);
 
         Path index = tmp.resolve("index.adoc");
         Path s1 = tmp.resolve("1_Раздел один.adoc");
@@ -93,7 +93,7 @@ public class SpliteratorAdocTest {
         String source = String.join("\n", "= Только преамбула", "", "Один абзац без разделов.");
 
         SpliteratorAdoc.saveSplit(tmp, "index.adoc", source, "==",
-                Map.of(MetadataKey.IMAGE, "attache"));
+                Map.of(MetadataKey.IMAGE, "attache"), OutputFormat.ADOC);
 
         try (var list = Files.list(tmp)) {
             assertEquals(1, list.count());

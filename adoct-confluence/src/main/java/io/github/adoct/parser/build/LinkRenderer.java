@@ -3,6 +3,7 @@ package io.github.adoct.parser.build;
 import org.apache.commons.lang3.StringUtils;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import io.github.adoct.parser.ast.Inline;
 import io.github.adoct.parser.model.LinksAttachment;
 import io.github.adoct.parser.model.LinksPage;
 import io.github.adoct.parser.model.LinksUser;
@@ -10,12 +11,12 @@ import io.github.adoct.parser.model.LinksValue;
 import io.github.adoct.parser.model.MetadataKey;
 import io.github.adoct.parser.confluence.LinkResult;
 
+import java.util.List;
 import java.util.Map;
 
 /**
- * Рендер {@code <ac:link>} в инлайн-AsciiDoc по резолву из {@code metadata[LINKS]}.
- * Логика перенесена из старого {@code ParseLink}; результат — без хвостовых пробелов
- * (расстановку пробелов берёт на себя writer).
+ * Рендер {@code <ac:link>} в формат-нейтральные инлайн-узлы ({@link Inline.Link}/{@link Inline.CrossRef})
+ * по резолву из {@code metadata[LINKS]}. Экранирование подписи — задача writer'а под конкретный формат.
  */
 public final class LinkRenderer {
 
@@ -24,21 +25,21 @@ public final class LinkRenderer {
 
     /**
      * Рендер упоминания пользователя (макрос {@code profile}, {@code ri:user}) по резолву из
-     * {@code metadata[LINKS]}. Пустой ключ → пустая строка (аноним/удалённый пользователь).
+     * {@code metadata[LINKS]}. Пустой ключ → пустой список (аноним/удалённый пользователь).
      */
-    public static String user(String userKey, Map<MetadataKey, Object> metadata) {
+    public static List<Inline> user(String userKey, Map<MetadataKey, Object> metadata) {
         if (StringUtils.isBlank(userKey)) {
-            return "";
+            return List.of();
         }
-        return link(links(metadata), new LinksUser(userKey));
+        return List.of(link(links(metadata), new LinksUser(userKey)));
     }
 
-    public static String render(Element e, Map<MetadataKey, Object> metadata) {
+    public static List<Inline> render(Element e, Map<MetadataKey, Object> metadata) {
         Map<LinksValue, LinkResult> links = links(metadata);
 
         Elements tagUser = e.getElementsByTag("ri:user");
         if (!tagUser.isEmpty()) {
-            return link(links, new LinksUser(tagUser.attr("ri:userkey")));
+            return List.of(link(links, new LinksUser(tagUser.attr("ri:userkey"))));
         }
         Elements page = e.getElementsByTag("ri:page");
         if (!page.isEmpty()) {
@@ -51,35 +52,35 @@ public final class LinkRenderer {
             if (StringUtils.isNotEmpty(anchor)) {
                 title = title + "#" + anchor;
             }
-            return link(links, new LinksPage(title, page.attr("ri:space-key")));
+            return List.of(link(links, new LinksPage(title, page.attr("ri:space-key"))));
         }
         Elements attachment = e.getElementsByTag("ri:attachment");
         if (!attachment.isEmpty()) {
-            return attachLink(links, new LinksAttachment(attachment.attr("ri:filename")), metadata);
+            return List.of(attachLink(links, new LinksAttachment(attachment.attr("ri:filename")), metadata));
         }
         Elements linkBody = e.getElementsByTag("ac:plain-text-link-body");
         if (!linkBody.isEmpty()) {
-            return "<<%s, %s>>".formatted(e.attr("ac:anchor"), linkBody.text());
+            return List.of(new Inline.CrossRef(e.attr("ac:anchor"), linkBody.text()));
         }
-        return "";
+        return List.of();
     }
 
-    private static String link(Map<LinksValue, LinkResult> links, LinksValue key) {
+    private static Inline link(Map<LinksValue, LinkResult> links, LinksValue key) {
         LinkResult res = links.get(key);
         if (res == null) {
-            return "link:http://mock[%s]".formatted(key);
+            return new Inline.Link("http://mock", List.of(new Inline.Text(key.toString())));
         }
-        return "link:%s[%s]".formatted(res.url(), res.title().replace("]", "\\]"));
+        return new Inline.Link(res.url(), List.of(new Inline.Text(res.title())));
     }
 
-    private static String attachLink(Map<LinksValue, LinkResult> links, LinksAttachment key,
+    private static Inline attachLink(Map<LinksValue, LinkResult> links, LinksAttachment key,
                                      Map<MetadataKey, Object> metadata) {
         LinkResult res = links.get(key);
         if (res == null) {
-            return "link:http://mock[%s]".formatted(key);
+            return new Inline.Link("http://mock", List.of(new Inline.Text(key.toString())));
         }
-        return "link:%s/%s[%s]".formatted(metadata.get(MetadataKey.ATTACH_FOLDER_NAME), res.title(),
-                res.title().replace("]", "\\]"));
+        String url = "%s/%s".formatted(metadata.get(MetadataKey.ATTACH_FOLDER_NAME), res.title());
+        return new Inline.Link(url, List.of(new Inline.Text(res.title())));
     }
 
     @SuppressWarnings("unchecked")

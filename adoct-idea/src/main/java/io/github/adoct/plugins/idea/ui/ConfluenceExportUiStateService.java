@@ -54,6 +54,14 @@ public final class ConfluenceExportUiStateService implements PersistentStateComp
         state.includeAttachments = includeAttachments;
     }
 
+    public void setFormat(String format) {
+        state.format = format;
+    }
+
+    public void setSkipUnchanged(boolean skipUnchanged) {
+        state.skipUnchanged = skipUnchanged;
+    }
+
     public String getLastUrl() {
         return state.lastUrl == null ? "" : state.lastUrl;
     }
@@ -82,6 +90,14 @@ public final class ConfluenceExportUiStateService implements PersistentStateComp
         return state.includeAttachments;
     }
 
+    public String getFormat() {
+        return state.format == null ? "adoc" : state.format;
+    }
+
+    public boolean isSkipUnchanged() {
+        return state.skipUnchanged;
+    }
+
     public static final class StateData {
         public String lastUrl = "";
         public String lastDirectory = "";
@@ -90,5 +106,7 @@ public final class ConfluenceExportUiStateService implements PersistentStateComp
         public boolean debug = false;
         public boolean includeChildren = true;
         public boolean includeAttachments = true;
+        public String format = "adoc";
+        public boolean skipUnchanged = true;
     }
 }

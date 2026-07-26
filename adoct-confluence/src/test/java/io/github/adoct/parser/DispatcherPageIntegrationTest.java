@@ -129,6 +129,77 @@ public class DispatcherPageIntegrationTest {
     }
 
     @Test
+    public void pageLabelsBecomeKeywordsInAsciiDocAndTagsInMarkdown() throws IOException {
+        LabeledGateway gateway = new LabeledGateway(page(), List.of("api", "docs"));
+
+        DispatcherPage adocDispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+        adocDispatcher.generate("123", (text, v) -> { });
+        String adoc = Files.readString(tmp.resolve("Главная").resolve("index.adoc")).replace("\r\n", "\n");
+        assertTrue(adoc, adoc.contains(":keywords: api, docs"));
+
+        DispatcherPage mdDispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+        mdDispatcher.setFormat(OutputFormat.MD);
+        mdDispatcher.generate("123", (text, v) -> { });
+        String md = Files.readString(tmp.resolve("Главная").resolve("index.md")).replace("\r\n", "\n");
+        assertTrue(md, md.contains("tags:") && md.contains("  - api") && md.contains("  - docs"));
+    }
+
+    private ContentPage pageWithVersion(String when) {
+        return new ContentPage("Главная", "http://confluence/Главная", when, CONTENT, "<p>view</p>",
+                Map.of("doc.pdf", new LinkResult("doc.pdf", "/download/doc.pdf")));
+    }
+
+    @Test
+    public void skipsUnchangedPageOnSecondRun() throws IOException {
+        VersionedGateway gateway = new VersionedGateway(pageWithVersion("v1"));
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("123", (t, v) -> { });
+        Path index = tmp.resolve("Главная").resolve("index.adoc");
+        assertTrue(Files.readString(index).contains(":confluency-version: v1"));
+        // помечаем файл: если страница пропущена, метка переживёт повторный прогон
+        Files.writeString(index, Files.readString(index) + "\nSENTINEL");
+        int attachAfterFirst = gateway.loadAttachCalls.get();
+
+        dispatcher.generate("123", (t, v) -> { });
+
+        assertTrue("неизменная страница не должна перевыгружаться", Files.readString(index).contains("SENTINEL"));
+        assertEquals("вложения не должны качаться повторно", attachAfterFirst, gateway.loadAttachCalls.get());
+    }
+
+    @Test
+    public void reExportsWhenVersionChanged() throws IOException {
+        VersionedGateway gateway = new VersionedGateway(pageWithVersion("v1"));
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("123", (t, v) -> { });
+        Path index = tmp.resolve("Главная").resolve("index.adoc");
+        Files.writeString(index, Files.readString(index) + "\nSENTINEL");
+
+        gateway.setPage(pageWithVersion("v2"));
+        dispatcher.generate("123", (t, v) -> { });
+
+        String out = Files.readString(index);
+        assertFalse("изменившаяся страница должна перевыгрузиться (метка стёрта)", out.contains("SENTINEL"));
+        assertTrue(out.contains(":confluency-version: v2"));
+    }
+
+    @Test
+    public void reExportsWhenSkipUnchangedDisabled() throws IOException {
+        VersionedGateway gateway = new VersionedGateway(pageWithVersion("v1"));
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+        dispatcher.setSkipUnchanged(false);
+
+        dispatcher.generate("123", (t, v) -> { });
+        Path index = tmp.resolve("Главная").resolve("index.adoc");
+        Files.writeString(index, Files.readString(index) + "\nSENTINEL");
+
+        dispatcher.generate("123", (t, v) -> { });
+
+        assertFalse("при выключенном skip страница выгружается всегда", Files.readString(index).contains("SENTINEL"));
+    }
+
+    @Test
     public void exportsChildPagesIntoSubfolders() throws IOException {
         TreeGateway gateway = new TreeGateway();
         DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
@@ -155,6 +226,7 @@ public class DispatcherPageIntegrationTest {
         FailingResolveGateway cached = new FailingResolveGateway(page());
         DispatcherPage dispatcher = new DispatcherPage(cached, tmp, ObjectMapperExt.INSTANT);
         dispatcher.setDebug(true);
+        dispatcher.setSkipUnchanged(false); // проверяем кэш ссылок, а не пропуск неизменной страницы
 
         String title = dispatcher.generate("123", (text, v) -> { });
 
@@ -198,6 +270,40 @@ public class DispatcherPageIntegrationTest {
         @Override
         public void loadAttach(Collection<LinkResult> values, Path attachmentFolder, Consumer<String> progress) {
             loadAttachCalls.incrementAndGet();
+        }
+    }
+
+    /** Фейк с меняемой версией страницы — для проверки инкрементальной выгрузки. */
+    private static class VersionedGateway extends FakeGateway {
+        private ContentPage current;
+
+        VersionedGateway(ContentPage page) {
+            super(page);
+            this.current = page;
+        }
+
+        void setPage(ContentPage page) {
+            this.current = page;
+        }
+
+        @Override
+        public ContentPage getMainPage(String id) {
+            return current;
+        }
+    }
+
+    /** Фейк с метками страницы — для проверки экспорта labels в {@code :keywords:}/{@code tags}. */
+    private static class LabeledGateway extends FakeGateway {
+        private final List<String> labels;
+
+        LabeledGateway(ContentPage page, List<String> labels) {
+            super(page);
+            this.labels = labels;
+        }
+
+        @Override
+        public List<String> labels(String id) {
+            return labels;
         }
     }
 

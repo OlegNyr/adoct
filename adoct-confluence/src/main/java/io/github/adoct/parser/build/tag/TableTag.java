@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -29,6 +30,11 @@ import java.util.stream.Collectors;
 public final class TableTag implements NodeTag {
 
     private static final Pattern WIDTH = Pattern.compile("width\\s*:\\s*(\\d+(?:\\.\\d+)?)");
+
+    /** Макросы, дающие блочное содержимое: ячейка с таким макросом становится rich (asciidoc-ячейка). */
+    private static final Set<String> BLOCK_MACROS = Set.of(
+            "note", "warning", "info", "tip", "panel", "code", "expand", "details",
+            "plantuml", "drawio", "inc-drawio", "toc", "numberedheadings", "swagger", "open-api");
 
     private final BlockBuilder blocks;
     private final InlineBuilder inline;
@@ -73,11 +79,18 @@ public final class TableTag implements NodeTag {
         // <th> в строке тела — заголовочная колонка (h|); в строке-заголовке стиль не нужен.
         boolean header = !headerRow && col.normalName().equals("th");
         boolean rich = !col.select("table, ul, ol").isEmpty()
-                || col.children().stream().filter(c -> c.normalName().equals("p")).count() > 1;
+                || col.children().stream().filter(c -> c.normalName().equals("p")).count() > 1
+                || hasBlockMacro(col);
         if (rich) {
             return new Block.Cell(colspan, rowspan, header, null, blocks.build(col.children(), cellCtx));
         }
         return new Block.Cell(colspan, rowspan, header, inline.build(col, ctx), null);
+    }
+
+    /** Ячейка содержит блочный макрос (admonition/panel/code/…) — значит, её нельзя выводить инлайн. */
+    private static boolean hasBlockMacro(Element col) {
+        return col.getElementsByTag("ac:structured-macro").stream()
+                .anyMatch(m -> BLOCK_MACROS.contains(m.attr("ac:name")));
     }
 
     /** Все строки таблицы в порядке документа (thead → tbody → tfoot). */
@@ -168,7 +181,7 @@ public final class TableTag implements NodeTag {
         Elements rows = rows(table);
         String head = rows.isEmpty() ? "" : rowText(rows.getFirst());
         String body = rows.stream().skip(1).map(TableTag::rowText).collect(Collectors.joining("\n"));
-        return new Block.RawBlock("[source, text]\n----\n" + head + "\n\n" + body + "\n----");
+        return new Block.CodeBlock("text", null, head + "\n\n" + body, null);
     }
 
     private static String rowText(Element tr) {

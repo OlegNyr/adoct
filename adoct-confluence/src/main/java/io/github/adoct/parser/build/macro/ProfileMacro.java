@@ -1,6 +1,5 @@
 package io.github.adoct.parser.build.macro;
 
-import org.apache.commons.lang3.StringUtils;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Element;
 import io.github.adoct.parser.ast.Block;
@@ -33,10 +32,10 @@ public final class ProfileMacro extends AbstractNodeMacro {
     public List<Block> build(String name, Map<String, String> params, Element body, BuildContext ctx) {
         String userKey = Jsoup.parse(params.getOrDefault("user", ""))
                 .getElementsByTag("ri:user").attr("ri:userkey");
-        String mention = LinkRenderer.user(userKey, ctx.metadata());
-        if (StringUtils.isEmpty(mention)) {
+        List<Inline> mention = LinkRenderer.user(userKey, ctx.metadata());
+        if (mention.isEmpty()) {
             return List.of();
         }
-        return List.of(new Block.Paragraph(List.of(new Inline.Raw(mention))));
+        return List.of(new Block.Paragraph(mention));
     }
 }

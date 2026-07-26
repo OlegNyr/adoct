@@ -1,6 +1,5 @@
 package io.github.adoct.parser.build.macro;
 
-import org.apache.commons.lang3.StringUtils;
 import org.jsoup.nodes.Element;
 import io.github.adoct.parser.ast.Block;
 import io.github.adoct.parser.build.BlockBuilder;
@@ -24,11 +23,6 @@ public final class NumberMacro extends AbstractNodeMacro {
 
     @Override
     public List<Block> build(String name, Map<String, String> params, Element body, BuildContext ctx) {
-        StringBuilder attrs = new StringBuilder(":sectnums:");
-        String levels = params.get("start-numbering-with");
-        if (StringUtils.isNotEmpty(levels)) {
-            attrs.append("\n:sectnumslevels: ").append(levels);
-        }
-        return prepend(new Block.RawBlock(attrs.toString()), children(body, ctx));
+        return prepend(new Block.SectNums(blankToNull(params.get("start-numbering-with"))), children(body, ctx));
     }
 }

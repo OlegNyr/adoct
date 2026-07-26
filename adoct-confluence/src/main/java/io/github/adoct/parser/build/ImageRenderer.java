@@ -4,16 +4,15 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.jsoup.nodes.Element;
+import io.github.adoct.parser.ast.Inline;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
- * Рендер картинок в тело макроса {@code файл[параметры]} (префикс {@code image:}/{@code image::}
- * добавляет вызывающий — инлайн или блок). Логика перенесена из {@code ParseImg}/{@code ParseImgAcc}:
+ * Рендер картинок в формат-нейтральный узел {@link Inline.Image} (writer сам решает, как отрисовать
+ * его в AsciiDoc/Markdown). Логика перенесена из {@code ParseImg}/{@code ParseImgAcc}:
  * {@code <img>} копирует файл из выгрузки в папку картинок, {@code <ac:image>} — нет.
  */
 @Slf4j
@@ -27,9 +26,9 @@ public final class ImageRenderer {
         this.destination = destination;
     }
 
-    /** {@code <img>}: копирует файл и возвращает {@code файл[alt]}. */
+    /** {@code <img>}: копирует файл в папку картинок и возвращает узел картинки (alt — из текста тега). */
     @SneakyThrows
-    public String img(Element el, String alt) {
+    public Inline.Image img(Element el, String alt) {
         String filenameRaw = el.attr("src");
         String filename = Path.of(filenameRaw).getFileName().toString();
 
@@ -43,22 +42,17 @@ public final class ImageRenderer {
                 log.warn("Not found file {}", sourceFile);
             }
         }
-        return "%s[%s]".formatted(filename, alt == null ? "" : alt);
+        return new Inline.Image(filename, emptyToNull(alt), null, null);
     }
 
-    /** {@code <ac:image>}: возвращает {@code файл[alt,width,height]} без копирования. */
-    public static String acImage(Element e, String alt) {
+    /** {@code <ac:image>}: узел картинки с alt/width/height (без копирования файла). */
+    public static Inline.Image acImage(Element e, String alt) {
         String filename = e.getElementsByTag("ri:attachment").attr("ri:filename");
-        List<String> params = new ArrayList<>();
-        if (StringUtils.isNotEmpty(alt)) {
-            params.add("alt=%s".formatted(alt));
-        }
-        if (StringUtils.isNotEmpty(e.attr("ac:width"))) {
-            params.add("width=%s".formatted(e.attr("ac:width")));
-        }
-        if (StringUtils.isNotEmpty(e.attr("ac:height"))) {
-            params.add("height=%s".formatted(e.attr("ac:height")));
-        }
-        return "%s[%s]".formatted(filename, String.join(",", params));
+        return new Inline.Image(filename, emptyToNull(alt), emptyToNull(e.attr("ac:width")),
+                emptyToNull(e.attr("ac:height")));
+    }
+
+    private static String emptyToNull(String s) {
+        return StringUtils.isEmpty(s) ? null : s;
     }
 }

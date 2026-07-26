@@ -8,11 +8,12 @@ import java.util.stream.Collectors;
  * <p>
  * Блоки разделяются ровно одной пустой строкой, ячейки таблицы раскладываются по строкам сразу
  * корректно — поэтому строковые пост-процессоры (схлопывание тройных переводов строк и компактизация
- * таблиц) больше не нужны. Состояние writer'а ({@code isLastReturn}, {@code topHeader}) тоже не требуется:
- * порядок и форматирование определяются структурой дерева.
+ * таблиц) не нужны. Экранирование ({@code |}/{@code !} в ячейках, {@code ]} в подписях ссылок) —
+ * здесь, под синтаксис AsciiDoc, а не в дереве.
  */
-public final class AsciiDocWriter {
+public final class AsciiDocWriter implements BlockWriter {
 
+    @Override
     public String write(List<Block> blocks) {
         return blocks.stream()
                 .map(this::block)
@@ -25,10 +26,17 @@ public final class AsciiDocWriter {
             case Block.Heading h -> "=".repeat(h.level() + 1) + " " + inline(h.title());
             case Block.Paragraph p -> inline(p.content());
             case Block.ItemList l -> list(l, 1);
+            case Block.TaskList t -> taskList(t);
             case Block.Table t -> table(t, '|');
             case Block.Admonition a -> admonition(a);
             case Block.Sidebar s -> sidebar(s);
-            case Block.RawBlock r -> r.adoc();
+            case Block.CodeBlock c -> codeBlock(c);
+            case Block.Image i -> image("image::", i.target(), i.alt(), i.width(), i.height(), i.caption());
+            case Block.Anchor a -> "[#%s]".formatted(a.id());
+            case Block.Toc ignored -> "toc::[]";
+            case Block.ThematicBreak ignored -> "---";
+            case Block.SectNums s -> sectNums(s);
+            case Block.PageInclude p -> "include::%s/index.adoc[]".formatted(p.folder());
             case Block.Container c -> write(c.children());
         };
     }
@@ -53,6 +61,67 @@ public final class AsciiDocWriter {
             }
         }
         return sb.toString();
+    }
+
+    private String taskList(Block.TaskList list) {
+        return list.items().stream()
+                .map(i -> "* [%s] %s".formatted(i.checked() ? "x" : " ", inline(i.text())))
+                .collect(Collectors.joining("\n"));
+    }
+
+    // --- код / картинки / атрибуты -----------------------------------------
+
+    private String codeBlock(Block.CodeBlock c) {
+        StringBuilder sb = new StringBuilder();
+        if (c.title() != null && !c.title().isBlank()) {
+            sb.append('.').append(c.title()).append('\n');
+        }
+        sb.append(header(c.language())).append("\n----\n");
+        sb.append(c.includePath() != null ? "include::%s[]".formatted(c.includePath()) : c.content());
+        sb.append("\n----");
+        return sb.toString();
+    }
+
+    private static String header(String language) {
+        if ("plantuml".equals(language)) {
+            return "[plantuml, format=\"png\"]";
+        }
+        return language == null ? "[source]" : "[source, %s]".formatted(language);
+    }
+
+    private String image(String prefix, String target, String alt, String width, String height, String caption) {
+        String cap = caption != null && !caption.isBlank() ? "." + caption + "\n" : "";
+        return cap + prefix + target + "[" + imageParams(alt, width, height) + "]";
+    }
+
+    /** Позиционный alt, когда нет размеров; именованные атрибуты, когда есть width/height. */
+    private static String imageParams(String alt, String width, String height) {
+        boolean hasDims = notEmpty(width) || notEmpty(height);
+        if (!hasDims) {
+            return alt == null ? "" : alt;
+        }
+        StringBuilder sb = new StringBuilder();
+        if (notEmpty(alt)) {
+            sb.append("alt=").append(alt);
+        }
+        if (notEmpty(width)) {
+            append(sb, "width=" + width);
+        }
+        if (notEmpty(height)) {
+            append(sb, "height=" + height);
+        }
+        return sb.toString();
+    }
+
+    private static void append(StringBuilder sb, String part) {
+        if (!sb.isEmpty()) {
+            sb.append(',');
+        }
+        sb.append(part);
+    }
+
+    private static String sectNums(Block.SectNums s) {
+        return notEmpty(s.levels()) ? ":sectnums:\n:sectnumslevels: " + s.levels() : ":sectnums:";
     }
 
     // --- таблицы -----------------------------------------------------------
@@ -94,9 +163,14 @@ public final class AsciiDocWriter {
             if (cell.header()) {
                 sb.append('h');
             }
-            sb.append(delim).append(inline(cell.inline()));
+            sb.append(delim).append(escapeCell(inline(cell.inline()), delim));
         }
         return sb.toString();
+    }
+
+    /** Экранирует разделитель ячеек ({@code |} или вложенный {@code !}) в тексте простой ячейки. */
+    private static String escapeCell(String text, char delim) {
+        return text.replace(String.valueOf(delim), "\\" + delim);
     }
 
     private String richCellBody(List<Block> blocks) {
@@ -154,9 +228,23 @@ public final class AsciiDocWriter {
             case Inline.Underline u -> "[.underline]##" + inline(u.children()) + "##";
             case Inline.Mono m -> "`" + inline(m.children()) + "`";
             case Inline.Colored c -> "[." + c.color() + "]##" + inline(c.children()) + "##";
-            case Inline.Link l -> "link:" + l.url() + "[" + inline(l.label()) + "]";
+            case Inline.Link l -> "link:" + l.url() + "[" + linkLabel(l.label()) + "]";
+            case Inline.CrossRef x -> "<<%s, %s>>".formatted(x.anchor(), x.text());
+            case Inline.Image i -> image("image:", i.target(), i.alt(), i.width(), i.height(), null);
+            case Inline.Status s -> "[.%s]#%s#".formatted(s.colour() != null
+                    ? "status-" + s.colour().toLowerCase(java.util.Locale.ROOT) : "status", s.title());
             case Inline.LineBreak ignored -> " +\n";
-            case Inline.Raw r -> r.adoc();
         };
+    }
+
+    /** Подпись ссылки; для plain-text (резолвнутые ac:link) экранируем {@code ]}. */
+    private String linkLabel(List<Inline> label) {
+        String rendered = inline(label);
+        boolean allText = label != null && label.stream().allMatch(n -> n instanceof Inline.Text);
+        return allText ? rendered.replace("]", "\\]") : rendered;
+    }
+
+    private static boolean notEmpty(String s) {
+        return s != null && !s.isEmpty();
     }
 }

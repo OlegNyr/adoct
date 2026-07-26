@@ -7,6 +7,7 @@ import ar.com.hjg.pngj.chunks.PngChunkTextVar;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import io.github.adoct.parser.ast.Block;
+import io.github.adoct.parser.ast.Inline;
 import io.github.adoct.parser.model.MetadataKey;
 
 import java.io.IOException;
@@ -15,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -50,14 +52,19 @@ final class DrawioRenderer {
 
         // In-memory режим: вложения не выгружены — отдаём best-effort ссылку без файловых операций.
         if (Boolean.TRUE.equals(metadata.get(MetadataKey.IN_MEMORY))) {
-            return new Block.RawBlock("image::%s/%s.drawio.png[]".formatted(attachFolderName, diagramName));
+            return imageBlock("%s/%s.drawio.png".formatted(attachFolderName, diagramName));
         }
 
         String fileName = prepareEditable(diagramName, attachFolder);
         if (fileName == null) {
-            return new Block.RawBlock("Diagram attachment access error: cannot display diagram");
+            return new Block.Paragraph(List.of(
+                    new Inline.Text("Diagram attachment access error: cannot display diagram")));
         }
-        return new Block.RawBlock("image::%s/%s[]".formatted(attachFolderName, fileName));
+        return imageBlock("%s/%s".formatted(attachFolderName, fileName));
+    }
+
+    private static Block imageBlock(String target) {
+        return new Block.Image(target, null, null, null, null);
     }
 
     /**

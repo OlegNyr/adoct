@@ -24,7 +24,7 @@ public final class TabsMacro extends AbstractNodeMacro {
     @Override
     public List<Block> build(String name, Map<String, String> params, Element body, BuildContext ctx) {
         if ("ui-tabs".equals(name)) {
-            return prepend(new Block.RawBlock("---"), children(body, ctx));
+            return prepend(new Block.ThematicBreak(), children(body, ctx));
         }
         return titled(params.get("title"), body, ctx);
     }

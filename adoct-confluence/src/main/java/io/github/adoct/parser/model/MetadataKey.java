@@ -18,6 +18,13 @@ public enum MetadataKey {
         FILES_FOLDER("filesFolder"),
         FILES_FOLDER_NAME("filesFolderName"),
         COLOR("color"),
+        /** Метки страницы Confluence ({@code List<String>}) → {@code :keywords:} (adoc) / {@code tags} (md). */
+        LABELS("labels"),
+        /**
+         * Версия страницы ({@code version.when}) — пишется в заголовок ({@code :confluency-version:} /
+         * frontmatter {@code confluency-version}) и служит признаком изменения при инкрементальной выгрузке.
+         */
+        VERSION("version"),
         /** In-memory конвертация: не писать файлы — длинные блоки инлайнить, drawio отдавать ссылкой. */
         IN_MEMORY("inMemory");
     private final String  key;

@@ -18,7 +18,7 @@ public final class ExpandMacro extends AbstractNodeMacro {
 
     @Override
     public Set<String> names() {
-        return Set.of("ui-expand", "expand", "excerpt", "details");
+        return Set.of("ui-expand", "expand", "excerpt");
     }
 
     @Override

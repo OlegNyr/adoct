@@ -27,6 +27,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -50,9 +52,22 @@ public class DispatcherPage {
     /** Скачивать ли вложения (файлы, картинки) в {@code attache/}. По умолчанию да. */
     @Setter
     private boolean includeAttachments = true;
+    /** Целевой формат экспорта (AsciiDoc по умолчанию). */
+    @Setter
+    private OutputFormat format = OutputFormat.ADOC;
+    /**
+     * Инкрементальная выгрузка: если версия страницы ({@code version.when}) совпадает с уже выгруженной
+     * (из заголовка {@code index.<ext>}), страница не перевыгружается. По умолчанию включено. Дочерние
+     * страницы всё равно обходятся — каждая проверяется отдельно.
+     */
+    @Setter
+    private boolean skipUnchanged = true;
     /** Каталог выгрузки текущей страницы (для баг-репорта при падении). {@code null} до его создания. */
     @Getter
     private Path destination;
+
+    /** Ищет записанную версию в заголовке ({@code :confluency-version:} adoc / {@code confluency-version:} md). */
+    private static final Pattern VERSION_LINE = Pattern.compile("(?m)^:?confluency-version:\\s*(.+)$");
 
     /**
      * Выгружает страницу и всё её поддерево: каждая страница — в свою подпапку
@@ -87,6 +102,7 @@ public class DispatcherPage {
     @SneakyThrows
     public String toAdoc(String id, ContentPage mainPage, boolean fast) {
         ConvertStorageToAdoc converter = new ConvertStorageToAdoc(mainPage.content(), mainPage.view());
+        converter.setFormat(format);
         Map<String, String> resolveView = converter.resolveLink();
         Set<LinksValue> links = converter.getLinks();
         Map<LinksValue, LinkResult> linksResolvers = fast
@@ -144,8 +160,17 @@ public class DispatcherPage {
         ContentPage mainPage = client.getMainPage(id);
         Path destination = baseDir.resolve(sanitizeFolderName(mainPage.title()));
         this.destination = destination;
+
+        // Инкрементально: не изменившуюся страницу пропускаем, но детей всё равно обходим.
+        if (skipUnchanged && isUnchanged(destination, mainPage)) {
+            progressCallback.next("Пропуск (не изменилась): %s".formatted(mainPage.title()), 0.2D);
+            exportChildren(id, destination, progressCallback);
+            return mainPage.title();
+        }
+
         Files.createDirectories(destination);
         ConvertStorageToAdoc converter = new ConvertStorageToAdoc(mainPage.content(), mainPage.view(), destination);
+        converter.setFormat(format);
 
         Path source = destination.resolve("source");
         if (debug) {
@@ -187,33 +212,58 @@ public class DispatcherPage {
             Files.createDirectories(filesDirectory);
         }
 
-        Map<MetadataKey, Object> metadata = Map.ofEntries(
-                Map.entry(MetadataKey.LINKS, linksResolvers),
-                Map.entry(MetadataKey.TITLE, mainPage.title()),
-                Map.entry(MetadataKey.PAGE_ID, id),
-                Map.entry(MetadataKey.URL, mainPage.url()),
-                Map.entry(MetadataKey.CREATE, mainPage.date()),
-                Map.entry(MetadataKey.ATTACH_FOLDER, attachmentFolder),
-                Map.entry(MetadataKey.ATTACH_FOLDER_NAME, "attache"),
-                Map.entry(MetadataKey.IMAGE, "attache"),
-                Map.entry(MetadataKey.DESTINATION_FOLDER, destination),
-                Map.entry(MetadataKey.FILES_FOLDER, filesDirectory),
-                Map.entry(MetadataKey.FILES_FOLDER_NAME, "files"),
-                Map.entry(MetadataKey.COLOR, exportColors)
-        );
+        Map<MetadataKey, Object> metadata = new HashMap<>();
+        metadata.put(MetadataKey.LINKS, linksResolvers);
+        metadata.put(MetadataKey.TITLE, mainPage.title());
+        metadata.put(MetadataKey.PAGE_ID, id);
+        metadata.put(MetadataKey.URL, mainPage.url());
+        metadata.put(MetadataKey.CREATE, mainPage.date());
+        metadata.put(MetadataKey.ATTACH_FOLDER, attachmentFolder);
+        metadata.put(MetadataKey.ATTACH_FOLDER_NAME, "attache");
+        metadata.put(MetadataKey.IMAGE, "attache");
+        metadata.put(MetadataKey.DESTINATION_FOLDER, destination);
+        metadata.put(MetadataKey.FILES_FOLDER, filesDirectory);
+        metadata.put(MetadataKey.FILES_FOLDER_NAME, "files");
+        metadata.put(MetadataKey.COLOR, exportColors);
+        metadata.put(MetadataKey.LABELS, client.labels(id));
+        if (mainPage.date() != null) {
+            metadata.put(MetadataKey.VERSION, mainPage.date());
+        }
         converter.convert(metadata, attachmentFolder);
 
         // files/ и attache/ оставляем, только если в них что-то есть.
         deleteIfEmpty(filesDirectory);
         deleteIfEmpty(attachmentFolder);
 
-        // Рекурсивно выгружаем дочерние страницы в подпапки текущей страницы.
+        exportChildren(id, destination, progressCallback);
+        return mainPage.title();
+    }
+
+    /** Рекурсивно выгружает дочерние страницы в подпапки текущей (если включено). */
+    private void exportChildren(String id, Path destination, ProgressCallback progressCallback) {
         if (includeChildren) {
             for (String childId : client.getChildPageIds(id)) {
                 export(childId, destination, progressCallback);
             }
         }
-        return mainPage.title();
+    }
+
+    /**
+     * Страница не изменилась: в каталоге уже есть {@code index.<ext>} с той же версией ({@code version.when})
+     * в заголовке. Нет файла/версии — считаем изменившейся (нужно выгрузить).
+     */
+    @SneakyThrows
+    private boolean isUnchanged(Path destination, ContentPage mainPage) {
+        String current = mainPage.date();
+        if (current == null || current.isBlank()) {
+            return false;
+        }
+        Path index = destination.resolve(format.indexFileName());
+        if (Files.notExists(index)) {
+            return false;
+        }
+        Matcher matcher = VERSION_LINE.matcher(Files.readString(index));
+        return matcher.find() && current.equals(matcher.group(1).trim());
     }
 
     /** Удаляет каталог, если он существует и пуст (чтобы не оставлять пустую {@code files/}). */

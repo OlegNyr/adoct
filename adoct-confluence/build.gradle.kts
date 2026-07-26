@@ -20,6 +20,14 @@ tasks.withType<Javadoc>().configureEach {
     (options as StandardJavadocDocletOptions).addStringOption("Xdoclint:none", "-quiet")
 }
 
+// Пробрасываем флаг обновления golden-снапшотов в форкнутую JVM тестов
+// (иначе -DupdateSnapshots=true не доходит до самих тестов).
+tasks.withType<Test>().configureEach {
+    listOf("updateSnapshots").forEach { key ->
+        System.getProperty(key)?.let { systemProperty(key, it) }
+    }
+}
+
 dependencies {
     // asciidoctorj отдаём наружу: типы org.asciidoctor.ast.* видны в слое плагина.
     api(libs.asciidoctorj)

@@ -5,6 +5,7 @@ import org.jsoup.nodes.Element;
 import io.github.adoct.parser.ast.Block;
 import io.github.adoct.parser.build.macro.AnchorMacro;
 import io.github.adoct.parser.build.macro.CodeMacro;
+import io.github.adoct.parser.build.macro.DetailsMacro;
 import io.github.adoct.parser.build.macro.DrawioMacro;
 import io.github.adoct.parser.build.macro.ExpandMacro;
 import io.github.adoct.parser.build.macro.IgnoreOkMacro;
@@ -42,6 +43,7 @@ public final class MacroBuilder {
         List<NodeMacro> handlers = List.of(
                 new IgnoreOkMacro(blocks),
                 new ExpandMacro(blocks),
+                new DetailsMacro(blocks),
                 new JiraMacro(blocks),
                 new NumberMacro(blocks),
                 new DrawioMacro(blocks),

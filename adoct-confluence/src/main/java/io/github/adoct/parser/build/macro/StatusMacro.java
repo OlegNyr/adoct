@@ -8,7 +8,6 @@ import io.github.adoct.parser.build.BlockBuilder;
 import io.github.adoct.parser.build.BuildContext;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -29,22 +28,24 @@ public final class StatusMacro extends AbstractNodeMacro {
 
     @Override
     public List<Block> build(String name, Map<String, String> params, Element body, BuildContext ctx) {
-        String rendered = render(params);
-        if (rendered.isEmpty()) {
+        Inline.Status status = status(params);
+        if (status == null) {
             return List.of();
         }
-        return List.of(new Block.Paragraph(List.of(new Inline.Raw(rendered))));
+        return List.of(new Block.Paragraph(List.of(status)));
     }
 
-    /** Инлайн-AsciiDoc лозенга: {@code [.status-<colour>]#<title>#}. Пустой title и цвет → пусто. */
-    public static String render(Map<String, String> params) {
+    /**
+     * Строит инлайн-лозенг из параметров макроса {@code status} (цвет + подпись); {@code null}, если
+     * подпись и цвет пусты. Конкретную разметку ({@code [.status-green]#…#} в AsciiDoc) даёт writer.
+     */
+    public static Inline.Status status(Map<String, String> params) {
         String colour = blankToNull(params.get("colour"));
         String title = blankToNull(params.get("title"));
         String text = title != null ? title : colour;
         if (StringUtils.isBlank(text)) {
-            return "";
+            return null;
         }
-        String role = colour != null ? "status-" + colour.toLowerCase(Locale.ROOT) : "status";
-        return "[.%s]#%s#".formatted(role, text);
+        return new Inline.Status(colour, text);
     }
 }

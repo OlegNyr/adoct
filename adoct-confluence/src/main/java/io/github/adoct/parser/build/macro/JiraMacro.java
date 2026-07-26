@@ -24,7 +24,7 @@ public final class JiraMacro extends AbstractNodeMacro {
 
     @Override
     public List<Block> build(String name, Map<String, String> params, Element body, BuildContext ctx) {
-        String link = "link:https://jira.example.com/browse/%s[]".formatted(params.get("key"));
-        return List.of(new Block.Paragraph(List.of(new Inline.Raw(link))));
+        String url = "https://jira.example.com/browse/%s".formatted(params.get("key"));
+        return List.of(new Block.Paragraph(List.of(new Inline.Link(url, List.of()))));
     }
 }

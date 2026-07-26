@@ -3,6 +3,7 @@ package io.github.adoct.parser.build.macro;
 import org.apache.commons.lang3.StringUtils;
 import org.jsoup.nodes.Element;
 import io.github.adoct.parser.ast.Block;
+import io.github.adoct.parser.ast.Inline;
 import io.github.adoct.parser.build.BlockBuilder;
 import io.github.adoct.parser.build.BuildContext;
 
@@ -38,8 +39,9 @@ public final class SwaggerMacro extends AbstractNodeMacro {
         String lang = spec.startsWith("{") ? "json" : "yaml";
         String path = storeFile(spec, ctx, "swagger_%d.%s".formatted(index++, lang));
         if (path == null) {
-            return List.of(new Block.RawBlock("[source, %s]\n----\n%s\n----".formatted(lang, spec)));
+            return List.of(new Block.CodeBlock(lang, null, spec, null));
         }
-        return List.of(new Block.RawBlock("link:%s[OpenAPI спецификация (swagger)]".formatted(path)));
+        return List.of(new Block.Paragraph(List.of(
+                new Inline.Link(path, List.of(new Inline.Text("OpenAPI спецификация (swagger)"))))));
     }
 }

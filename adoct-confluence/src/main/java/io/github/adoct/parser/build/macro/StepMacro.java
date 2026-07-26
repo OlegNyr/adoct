@@ -26,6 +26,6 @@ public final class StepMacro extends AbstractNodeMacro {
         if ("ui-steps".equalsIgnoreCase(name)) {
             return children(body, ctx);
         }
-        return prepend(new Block.RawBlock("---"), children(body, ctx));
+        return prepend(new Block.ThematicBreak(), children(body, ctx));
     }
 }

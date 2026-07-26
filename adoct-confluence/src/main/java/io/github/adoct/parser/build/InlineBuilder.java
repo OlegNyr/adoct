@@ -59,7 +59,7 @@ public final class InlineBuilder {
         String name = node.nodeName();
         switch (name.toLowerCase()) {
             case "#text" -> {
-                String text = escape(node);
+                String text = node instanceof TextNode t ? t.text() : node.toString();
                 if (!text.isEmpty()) {
                     out.add(new Inline.Text(text));
                 }
@@ -78,9 +78,9 @@ public final class InlineBuilder {
             case "strong", "b" -> out.add(new Inline.Bold(children(node, ctx)));
             case "a" -> out.add(new Inline.Link(node.attr("href"), children(node, ctx)));
             case "br" -> out.add(new Inline.LineBreak());
-            case "ac:link" -> raw(out, LinkRenderer.render((Element) node, ctx.metadata()));
-            case "ac:image" -> raw(out, "image:" + ImageRenderer.acImage((Element) node, ((Element) node).text().trim()));
-            case "img" -> raw(out, "image:" + imageRenderer.img((Element) node, ((Element) node).text().trim()));
+            case "ac:link" -> out.addAll(LinkRenderer.render((Element) node, ctx.metadata()));
+            case "ac:image" -> out.add(ImageRenderer.acImage((Element) node, ((Element) node).text().trim()));
+            case "img" -> out.add(imageRenderer.img((Element) node, ((Element) node).text().trim()));
             case "time" -> {
                 String dt = node.attr("datetime");
                 if (!dt.isEmpty()) {
@@ -88,34 +88,64 @@ public final class InlineBuilder {
                 }
             }
             case "ac:inline-comment-marker" -> out.addAll(children(node, ctx));
+            case "ac:emoticon" -> {
+                String emoji = emoticon((Element) node);
+                if (!emoji.isEmpty()) {
+                    out.add(new Inline.Text(emoji));
+                }
+            }
             case "ac:placeholder" -> { /* выкидываем */ }
             case "ac:structured-macro" -> {
                 Element macro = (Element) node;
                 String macroName = macro.attr("ac:name");
                 if ("jira".equals(macroName)) {
                     String key = macroParams(macro).get("key");
-                    raw(out, "link:https://jira.example.com/browse/%s[]".formatted(key));
+                    out.add(new Inline.Link("https://jira.example.com/browse/%s".formatted(key), List.of()));
                 } else if ("profile".equals(macroName)) {
                     String userKey = macro.getElementsByTag("ri:user").attr("ri:userkey");
-                    raw(out, LinkRenderer.user(userKey, ctx.metadata()));
+                    out.addAll(LinkRenderer.user(userKey, ctx.metadata()));
                 } else if ("status".equals(macroName)) {
-                    raw(out, StatusMacro.render(macroParams(macro)));
+                    Inline.Status status = StatusMacro.status(macroParams(macro));
+                    if (status != null) {
+                        out.add(status);
+                    }
                 }
             }
             default -> out.addAll(children(node, ctx));
         }
     }
 
-    private static void raw(List<Inline> out, String adoc) {
-        if (StringUtils.isNotEmpty(adoc)) {
-            out.add(new Inline.Raw(adoc));
+    /**
+     * Эмотикон Confluence → unicode. Приоритет: явный {@code ac:emoji-fallback} (готовый символ) →
+     * codepoint из hex {@code ac:emoji-id} → карта известных имён ({@code tick}/{@code cross}/…) →
+     * shortname ({@code :name:}) как есть.
+     */
+    private static String emoticon(Element el) {
+        String fallback = el.attr("ac:emoji-fallback");
+        if (StringUtils.isNotEmpty(fallback)) {
+            return fallback;
         }
-    }
-
-    /** Текст узла с экранированием '|' (чтобы не ломать разметку таблиц). */
-    private static String escape(Node node) {
-        String text = node instanceof TextNode t ? t.text() : node.toString();
-        return text.replace("|", "\\|");
+        String hex = el.attr("ac:emoji-id");
+        if (hex.matches("[0-9a-fA-F]{1,6}")) {
+            return new String(Character.toChars(Integer.parseInt(hex, 16)));
+        }
+        String name = el.attr("ac:name");
+        return switch (name) {
+            case "tick", "check" -> "✅";
+            case "cross" -> "❌";
+            case "warning" -> "⚠️";
+            case "information" -> "ℹ️";
+            case "question" -> "❓";
+            case "thumbs-up" -> "👍";
+            case "thumbs-down" -> "👎";
+            case "plus" -> "➕";
+            case "minus" -> "➖";
+            case "yellow-star", "star_yellow" -> "⭐";
+            default -> {
+                String shortname = el.attr("ac:emoji-shortname");
+                yield StringUtils.isNotEmpty(shortname) ? shortname : "";
+            }
+        };
     }
 
     private static Optional<String> findColor(String style) {

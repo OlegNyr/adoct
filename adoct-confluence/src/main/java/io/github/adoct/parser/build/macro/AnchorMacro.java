@@ -28,6 +28,6 @@ public final class AnchorMacro extends AbstractNodeMacro {
         if (StringUtils.isBlank(anchor)) {
             anchor = params.values().stream().filter(StringUtils::isNotBlank).findFirst().orElse(null);
         }
-        return StringUtils.isBlank(anchor) ? List.of() : List.of(new Block.RawBlock("[#%s]".formatted(anchor)));
+        return StringUtils.isBlank(anchor) ? List.of() : List.of(new Block.Anchor(anchor));
     }
 }

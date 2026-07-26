@@ -23,6 +23,6 @@ public final class TocMacro extends AbstractNodeMacro {
 
     @Override
     public List<Block> build(String name, Map<String, String> params, Element body, BuildContext ctx) {
-        return List.of(new Block.RawBlock("toc::[]"));
+        return List.of(new Block.Toc());
     }
 }

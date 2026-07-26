@@ -166,6 +166,35 @@ public class ConfluenceClient implements ConfluenceGateway {
         return ids;
     }
 
+    /**
+     * Метки страницы ({@code /content/{id}/label}). Best-effort: любая ошибка REST/парсинга → пустой
+     * список, чтобы отсутствие меток не роняло экспорт. Имя метки берётся из {@code name} (fallback {@code label}).
+     */
+    @Override
+    public List<String> labels(String id) {
+        try {
+            HttpUriRequest httpRequest = RequestBuilder.get()
+                    .setUri(urlBase + "/content/%s/label".formatted(id))
+                    .addParameter("limit", "200")
+                    .build();
+            String body = doRequestAndFailIfNot20x(httpRequest);
+            if (body == null) {
+                return List.of();
+            }
+            List<String> labels = new ArrayList<>();
+            for (com.fasterxml.jackson.databind.JsonNode node : ObjectMapperExt.INSTANT.readTree(body).path("results")) {
+                String name = node.path("name").asText(node.path("label").asText(""));
+                if (!name.isBlank()) {
+                    labels.add(name);
+                }
+            }
+            return labels;
+        } catch (Exception e) {
+            log.warn("Не удалось получить метки страницы {}: {}", id, e.getMessage());
+            return List.of();
+        }
+    }
+
     @SneakyThrows
     public void getAttachments(Map<String, LinkResult> res, String id, int start) {
 

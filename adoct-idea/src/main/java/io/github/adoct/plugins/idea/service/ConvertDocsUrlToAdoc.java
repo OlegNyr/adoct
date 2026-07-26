@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 import io.github.adoct.plugins.idea.settings.ConfluenceSettingsService;
 import io.github.adoct.parser.DispatcherPage;
+import io.github.adoct.parser.OutputFormat;
 import io.github.adoct.parser.confluence.ConfluenceClient;
 import io.github.adoct.parser.confluence.ObjectMapperExt;
 
@@ -26,8 +27,8 @@ public final class ConvertDocsUrlToAdoc {
     }
 
     public String convert(String url, Path targetDir, boolean exportColors, boolean debug,
-                          boolean includeChildren, boolean includeAttachments,
-                          @NotNull ProgressIndicator indicator) {
+                          boolean includeChildren, boolean includeAttachments, OutputFormat format,
+                          boolean skipUnchanged, @NotNull ProgressIndicator indicator) {
         indicator.checkCanceled();
         indicator.setIndeterminate(false);
         indicator.setFraction(0.1);
@@ -47,6 +48,8 @@ public final class ConvertDocsUrlToAdoc {
         dispatcherPage.setDebug(debug);
         dispatcherPage.setIncludeChildren(includeChildren);
         dispatcherPage.setIncludeAttachments(includeAttachments);
+        dispatcherPage.setFormat(format == null ? OutputFormat.ADOC : format);
+        dispatcherPage.setSkipUnchanged(skipUnchanged);
 
         try {
             String title = dispatcherPage.generate(resolvePageId(confluenceClient, url), (text, step) -> {

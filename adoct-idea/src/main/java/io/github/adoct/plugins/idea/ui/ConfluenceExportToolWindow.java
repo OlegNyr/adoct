@@ -15,6 +15,7 @@ import com.intellij.ui.components.JBTextField;
 import org.jetbrains.annotations.NotNull;
 import io.github.adoct.plugins.idea.service.BugReportService;
 import io.github.adoct.plugins.idea.service.ConvertDocsUrlToAdoc;
+import io.github.adoct.parser.OutputFormat;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -39,7 +40,12 @@ public class ConfluenceExportToolWindow {
     private JCheckBox includeAttachmentsCheckBox;
     private JCheckBox debugCheckBox;
     private JCheckBox reportOnErrorCheckBox;
+    private JCheckBox skipUnchangedCheckBox;
+    private JComboBox<String> formatComboBox;
     private JButton exportButton;
+
+    /** Порядок должен совпадать с {@link #FORMAT_VALUES}: индекс combo → формат. */
+    private static final String[] FORMAT_VALUES = {"adoc", "md"};
 
     public ConfluenceExportToolWindow(@NotNull Project project) {
         this.project = project;
@@ -112,16 +118,39 @@ public class ConfluenceExportToolWindow {
         gbc.weightx = 1.0;
         contentPanel.add(reportOnErrorCheckBox, gbc);
 
-        exportButton = new JButton(message("toolwindow.ConfluenceExport.Export.caption"));
+        skipUnchangedCheckBox = new JCheckBox(message("toolwindow.ConfluenceExport.SkipUnchanged.caption"));
         gbc.gridx = 0;
         gbc.gridy = 7;
         gbc.gridwidth = 2;
+        gbc.weightx = 1.0;
+        contentPanel.add(skipUnchangedCheckBox, gbc);
+
+        gbc.gridx = 0;
+        gbc.gridy = 8;
+        gbc.gridwidth = 1;
+        gbc.weightx = 0.0;
+        contentPanel.add(new JLabel(message("toolwindow.ConfluenceExport.Format.caption")), gbc);
+
+        formatComboBox = new JComboBox<>(new String[] {
+                message("toolwindow.ConfluenceExport.Format.adoc"),
+                message("toolwindow.ConfluenceExport.Format.md")
+        });
+        gbc.gridx = 1;
+        gbc.gridy = 8;
+        gbc.weightx = 1.0;
+        contentPanel.add(formatComboBox, gbc);
+
+        exportButton = new JButton(message("toolwindow.ConfluenceExport.Export.caption"));
+        gbc.gridx = 0;
+        gbc.gridy = 9;
+        gbc.gridwidth = 2;
+        gbc.weightx = 0.0;
         gbc.fill = GridBagConstraints.NONE;
         gbc.anchor = GridBagConstraints.CENTER;
         contentPanel.add(exportButton, gbc);
 
         gbc.gridx = 0;
-        gbc.gridy = 8;
+        gbc.gridy = 10;
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.anchor = GridBagConstraints.WEST;
@@ -153,6 +182,8 @@ public class ConfluenceExportToolWindow {
         includeAttachmentsCheckBox.addActionListener(e -> persistState());
         debugCheckBox.addActionListener(e -> persistState());
         reportOnErrorCheckBox.addActionListener(e -> persistState());
+        skipUnchangedCheckBox.addActionListener(e -> persistState());
+        formatComboBox.addActionListener(e -> persistState());
 
         exportDirectoryField.addActionListener(e -> {
             FileChooserDescriptor descriptor = FileChooserDescriptorFactory.createSingleFolderDescriptor();
@@ -174,6 +205,8 @@ public class ConfluenceExportToolWindow {
         boolean includeAttachments = includeAttachmentsCheckBox.isSelected();
         boolean debug = debugCheckBox.isSelected();
         boolean reportOnError = reportOnErrorCheckBox.isSelected();
+        boolean skipUnchanged = skipUnchangedCheckBox.isSelected();
+        OutputFormat format = selectedFormat();
         persistState(url, targetDirPath);
 
         if (url.isEmpty()) {
@@ -195,8 +228,15 @@ public class ConfluenceExportToolWindow {
             return;
         }
 
-        runExportInBackground(url, targetDir, exportColors, includeChildren, includeAttachments, debug, reportOnError);
+        runExportInBackground(url, targetDir, exportColors, includeChildren, includeAttachments, debug, reportOnError,
+                format, skipUnchanged);
 
+    }
+
+    /** Формат из выпадающего списка по индексу (см. {@link #FORMAT_VALUES}). */
+    private OutputFormat selectedFormat() {
+        int i = formatComboBox.getSelectedIndex();
+        return OutputFormat.from(FORMAT_VALUES[i < 0 ? 0 : i]);
     }
 
     private static boolean isValidHttpUrl(String value) {
@@ -236,6 +276,8 @@ public class ConfluenceExportToolWindow {
         includeAttachmentsCheckBox.setSelected(uiStateService.isIncludeAttachments());
         debugCheckBox.setSelected(uiStateService.isDebug());
         reportOnErrorCheckBox.setSelected(uiStateService.isReportOnError());
+        skipUnchangedCheckBox.setSelected(uiStateService.isSkipUnchanged());
+        formatComboBox.setSelectedIndex("md".equalsIgnoreCase(uiStateService.getFormat()) ? 1 : 0);
     }
 
     private void persistState() {
@@ -254,10 +296,13 @@ public class ConfluenceExportToolWindow {
         uiStateService.setIncludeAttachments(includeAttachmentsCheckBox.isSelected());
         uiStateService.setDebug(debugCheckBox.isSelected());
         uiStateService.setReportOnError(reportOnErrorCheckBox.isSelected());
+        uiStateService.setSkipUnchanged(skipUnchangedCheckBox.isSelected());
+        uiStateService.setFormat(FORMAT_VALUES[Math.max(0, formatComboBox.getSelectedIndex())]);
     }
 
     private void runExportInBackground(String url, Path targetDir, boolean exportColors, boolean includeChildren,
-                                       boolean includeAttachments, boolean debug, boolean reportOnError) {
+                                       boolean includeAttachments, boolean debug, boolean reportOnError,
+                                       OutputFormat format, boolean skipUnchanged) {
         exportButton.setEnabled(false);
         AtomicReference<Throwable> errorRef = new AtomicReference<>();
         AtomicReference<String> titleRef = new AtomicReference<>();
@@ -273,7 +318,8 @@ public class ConfluenceExportToolWindow {
                 try {
                     indicator.setText(message("toolwindow.ConfluenceExport.Progress.running.text"));
                     String title = ConvertDocsUrlToAdoc.getInstance()
-                            .convert(url, targetDir, exportColors, debug, includeChildren, includeAttachments, indicator);
+                            .convert(url, targetDir, exportColors, debug, includeChildren, includeAttachments,
+                                    format, skipUnchanged, indicator);
                     titleRef.set(title);
                     // Принудительный отчёт по запросу пользователя (тихая ошибка без исключения).
                     if (reportOnError) {

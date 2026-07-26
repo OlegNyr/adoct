@@ -42,17 +42,17 @@ public abstract class AbstractNodeMacro implements NodeMacro {
     }
 
     /**
-     * Длинный текст (> {@code maxIncludeString} строк) выносит в файл и заменяет на {@code include::}.
-     * В in-memory режиме ({@link MetadataKey#IN_MEMORY}) файл не пишется — текст инлайнится как есть.
+     * Длинный текст (> {@code maxIncludeString} строк) выносит во внешний файл и возвращает его
+     * относительный путь (для {@code include::}); {@code null}, если текст остаётся инлайн (короткий
+     * или in-memory режим {@link MetadataKey#IN_MEMORY}). Сам текст всегда сохраняется в узле AST —
+     * writer решает, инлайнить его или ссылаться на файл.
      */
-    @SneakyThrows
-    protected String externalize(String text, BuildContext ctx, String fileName) {
+    protected String externalizePath(String text, BuildContext ctx, String fileName) {
         if (Boolean.TRUE.equals(ctx.metadata().get(MetadataKey.IN_MEMORY))
                 || StringUtils.countMatches(text, "\n") <= ctx.maxIncludeString()) {
-            return text;
+            return null;
         }
-        String path = storeFile(text, ctx, fileName);
-        return path == null ? text : "include::%s[]".formatted(path);
+        return storeFile(text, ctx, fileName);
     }
 
     /**

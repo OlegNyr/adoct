@@ -2,12 +2,13 @@ package io.github.adoct.parser.build.tag;
 
 import org.jsoup.nodes.Element;
 import io.github.adoct.parser.ast.Block;
+import io.github.adoct.parser.ast.Inline;
 import io.github.adoct.parser.build.BuildContext;
 import io.github.adoct.parser.build.ImageRenderer;
 
 import java.util.List;
 
-/** Блок-уровневый {@code <img>} → {@code image::} (файл копируется из выгрузки в папку картинок). */
+/** Блок-уровневый {@code <img>} → картинка блочного уровня (файл копируется из выгрузки в папку картинок). */
 public final class ImgTag implements NodeTag {
 
     private final ImageRenderer imageRenderer;
@@ -23,6 +24,7 @@ public final class ImgTag implements NodeTag {
 
     @Override
     public List<Block> build(Element el, BuildContext ctx) {
-        return List.of(new Block.RawBlock("image::" + imageRenderer.img(el, el.text().trim())));
+        Inline.Image img = imageRenderer.img(el, el.text().trim());
+        return List.of(new Block.Image(img.target(), img.alt(), img.width(), img.height(), null));
     }
 }

@@ -6,6 +6,7 @@ import io.github.adoct.mcp.McpTool;
 import io.github.adoct.mcp.tools.Tool;
 import io.github.adoct.mcp.tools.ToolContext;
 import io.github.adoct.parser.DispatcherPage;
+import io.github.adoct.parser.OutputFormat;
 import io.github.adoct.parser.confluence.ConfluenceClient;
 import io.github.adoct.parser.confluence.ObjectMapperExt;
 
@@ -27,6 +28,8 @@ public final class ConfluenceExportTreeToAdoc implements Tool {
                 .bool("includeAttachments", "Скачивать вложения (по умолчанию true)", false)
                 .bool("exportColors", "Сохранять оригинальные цвета (по умолчанию false)", false)
                 .bool("debug", "Сохранять папку source/ (по умолчанию false)", false)
+                .str("format", "Формат вывода: adoc (по умолчанию) или md (Markdown)", false)
+                .bool("skipUnchanged", "Пропускать не изменившиеся страницы по версии (по умолчанию true)", false)
                 .str("host", "Хост Confluence; иначе хост по умолчанию", false)
                 .build();
         return new McpTool("confluence_export_tree_to_adoc",
@@ -40,6 +43,8 @@ public final class ConfluenceExportTreeToAdoc implements Tool {
             dp.setIncludeAttachments(c.optBool(args, "includeAttachments", true));
             dp.setExportColors(c.optBool(args, "exportColors", false));
             dp.setDebug(c.optBool(args, "debug", false));
+            dp.setFormat(OutputFormat.from(c.text(args, "format")));
+            dp.setSkipUnchanged(c.optBool(args, "skipUnchanged", true));
             String title = dp.generate(pageId, (t, s) -> { });
             ObjectNode out = c.mapper().createObjectNode();
             out.put("title", title);

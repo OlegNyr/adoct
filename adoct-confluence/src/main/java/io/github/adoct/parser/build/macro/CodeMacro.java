@@ -37,14 +37,8 @@ public final class CodeMacro extends AbstractNodeMacro {
                 language = "xml";
             }
         }
-        StringBuilder sb = new StringBuilder();
-        if (title != null) {
-            sb.append('.').append(title).append('\n');
-        }
-        sb.append(language == null ? "[source]" : "[source, %s]".formatted(language)).append("\n----\n");
-        sb.append(externalize(text, ctx, makeFileName(title, language)));
-        sb.append("\n----");
-        return List.of(new Block.RawBlock(sb.toString()));
+        String includePath = externalizePath(text, ctx, makeFileName(title, language));
+        return List.of(new Block.CodeBlock(language, title, text, includePath));
     }
 
     private String makeFileName(String title, String language) {

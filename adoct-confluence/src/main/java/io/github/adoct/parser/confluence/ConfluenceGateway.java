@@ -27,4 +27,12 @@ public interface ConfluenceGateway {
 
     /** Скачивает вложения в указанный каталог, дёргая {@code progress} на каждый файл. */
     void loadAttach(Collection<LinkResult> values, Path attachmentFolder, Consumer<String> progress);
+
+    /**
+     * Метки (labels) страницы для экспорта в {@code :keywords:} (adoc) / {@code tags} (md). По умолчанию
+     * пусто — реализация best-effort, чтобы отсутствие меток или ошибка REST не роняли экспорт.
+     */
+    default List<String> labels(String id) {
+        return List.of();
+    }
 }

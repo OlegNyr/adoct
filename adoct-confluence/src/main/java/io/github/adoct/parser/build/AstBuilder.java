@@ -13,6 +13,7 @@ import io.github.adoct.parser.build.tag.MacroTag;
 import io.github.adoct.parser.build.tag.ParagraphTag;
 import io.github.adoct.parser.build.tag.PlaceholderTag;
 import io.github.adoct.parser.build.tag.TableTag;
+import io.github.adoct.parser.build.tag.TaskListTag;
 import io.github.adoct.parser.model.MetadataKey;
 
 import java.nio.file.Path;
@@ -40,6 +41,7 @@ public final class AstBuilder {
                 new ParagraphTag(inline),
                 new HeadingTag(inline),
                 new TableTag(block, inline),
+                new TaskListTag(inline),
                 new ListTag(block, inline),
                 new ContainerTag(block),
                 new MacroTag(macro),
