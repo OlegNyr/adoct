@@ -1,3 +1,9 @@
+## [1.2.1]
+
+- Экспорт настроек MCP в JSON-конфиг CLI (Settings → Tools → AsciiDocTools → MCP-сервер →
+  «Экспорт конфига → JSON»; реальные токены или плейсхолдеры `${MCP_TOKEN_N}`).
+- README: как запускать MCP-сервер по HTTP (Streamable HTTP `/mcp`, порт/bind, безопасность).
+
 ## [1.2.0]
 
 Экспорт из Confluence в Markdown (GFM) наравне с AsciiDoc + улучшения выгрузки дерева.
