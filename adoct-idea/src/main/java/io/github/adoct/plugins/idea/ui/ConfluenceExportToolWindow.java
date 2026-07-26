@@ -41,6 +41,7 @@ public class ConfluenceExportToolWindow {
     private JCheckBox debugCheckBox;
     private JCheckBox reportOnErrorCheckBox;
     private JCheckBox skipUnchangedCheckBox;
+    private JCheckBox exportSpaceCheckBox;
     private JComboBox<String> formatComboBox;
     private JButton exportButton;
 
@@ -125,8 +126,15 @@ public class ConfluenceExportToolWindow {
         gbc.weightx = 1.0;
         contentPanel.add(skipUnchangedCheckBox, gbc);
 
+        exportSpaceCheckBox = new JCheckBox(message("toolwindow.ConfluenceExport.ExportSpace.caption"));
         gbc.gridx = 0;
         gbc.gridy = 8;
+        gbc.gridwidth = 2;
+        gbc.weightx = 1.0;
+        contentPanel.add(exportSpaceCheckBox, gbc);
+
+        gbc.gridx = 0;
+        gbc.gridy = 9;
         gbc.gridwidth = 1;
         gbc.weightx = 0.0;
         contentPanel.add(new JLabel(message("toolwindow.ConfluenceExport.Format.caption")), gbc);
@@ -136,13 +144,13 @@ public class ConfluenceExportToolWindow {
                 message("toolwindow.ConfluenceExport.Format.md")
         });
         gbc.gridx = 1;
-        gbc.gridy = 8;
+        gbc.gridy = 9;
         gbc.weightx = 1.0;
         contentPanel.add(formatComboBox, gbc);
 
         exportButton = new JButton(message("toolwindow.ConfluenceExport.Export.caption"));
         gbc.gridx = 0;
-        gbc.gridy = 9;
+        gbc.gridy = 10;
         gbc.gridwidth = 2;
         gbc.weightx = 0.0;
         gbc.fill = GridBagConstraints.NONE;
@@ -150,7 +158,7 @@ public class ConfluenceExportToolWindow {
         contentPanel.add(exportButton, gbc);
 
         gbc.gridx = 0;
-        gbc.gridy = 10;
+        gbc.gridy = 11;
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.anchor = GridBagConstraints.WEST;
@@ -183,6 +191,7 @@ public class ConfluenceExportToolWindow {
         debugCheckBox.addActionListener(e -> persistState());
         reportOnErrorCheckBox.addActionListener(e -> persistState());
         skipUnchangedCheckBox.addActionListener(e -> persistState());
+        exportSpaceCheckBox.addActionListener(e -> persistState());
         formatComboBox.addActionListener(e -> persistState());
 
         exportDirectoryField.addActionListener(e -> {
@@ -206,11 +215,12 @@ public class ConfluenceExportToolWindow {
         boolean debug = debugCheckBox.isSelected();
         boolean reportOnError = reportOnErrorCheckBox.isSelected();
         boolean skipUnchanged = skipUnchangedCheckBox.isSelected();
+        boolean exportSpace = exportSpaceCheckBox.isSelected();
         OutputFormat format = selectedFormat();
         persistState(url, targetDirPath);
 
         if (url.isEmpty()) {
-            notifyError("Please enter Confluence URL");
+            notifyError(exportSpace ? "Please enter a Confluence space URL" : "Please enter Confluence URL");
             return;
         }
         if (!isValidHttpUrl(url)) {
@@ -229,7 +239,7 @@ public class ConfluenceExportToolWindow {
         }
 
         runExportInBackground(url, targetDir, exportColors, includeChildren, includeAttachments, debug, reportOnError,
-                format, skipUnchanged);
+                format, skipUnchanged, exportSpace);
 
     }
 
@@ -277,6 +287,7 @@ public class ConfluenceExportToolWindow {
         debugCheckBox.setSelected(uiStateService.isDebug());
         reportOnErrorCheckBox.setSelected(uiStateService.isReportOnError());
         skipUnchangedCheckBox.setSelected(uiStateService.isSkipUnchanged());
+        exportSpaceCheckBox.setSelected(uiStateService.isExportSpace());
         formatComboBox.setSelectedIndex("md".equalsIgnoreCase(uiStateService.getFormat()) ? 1 : 0);
     }
 
@@ -297,12 +308,13 @@ public class ConfluenceExportToolWindow {
         uiStateService.setDebug(debugCheckBox.isSelected());
         uiStateService.setReportOnError(reportOnErrorCheckBox.isSelected());
         uiStateService.setSkipUnchanged(skipUnchangedCheckBox.isSelected());
+        uiStateService.setExportSpace(exportSpaceCheckBox.isSelected());
         uiStateService.setFormat(FORMAT_VALUES[Math.max(0, formatComboBox.getSelectedIndex())]);
     }
 
     private void runExportInBackground(String url, Path targetDir, boolean exportColors, boolean includeChildren,
                                        boolean includeAttachments, boolean debug, boolean reportOnError,
-                                       OutputFormat format, boolean skipUnchanged) {
+                                       OutputFormat format, boolean skipUnchanged, boolean exportSpace) {
         exportButton.setEnabled(false);
         AtomicReference<Throwable> errorRef = new AtomicReference<>();
         AtomicReference<String> titleRef = new AtomicReference<>();
@@ -319,7 +331,7 @@ public class ConfluenceExportToolWindow {
                     indicator.setText(message("toolwindow.ConfluenceExport.Progress.running.text"));
                     String title = ConvertDocsUrlToAdoc.getInstance()
                             .convert(url, targetDir, exportColors, debug, includeChildren, includeAttachments,
-                                    format, skipUnchanged, indicator);
+                                    format, skipUnchanged, exportSpace, indicator);
                     titleRef.set(title);
                     // Принудительный отчёт по запросу пользователя (тихая ошибка без исключения).
                     if (reportOnError) {

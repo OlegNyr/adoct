@@ -14,7 +14,9 @@ import org.apache.http.util.EntityUtils;
 import io.github.adoct.parser.confluence.content.Attachment;
 import io.github.adoct.parser.confluence.content.Body;
 import io.github.adoct.parser.confluence.content.ContentMainPage;
+import io.github.adoct.parser.confluence.content.History;
 import io.github.adoct.parser.confluence.content.LinksDto;
+import io.github.adoct.parser.confluence.content.Person;
 import io.github.adoct.parser.confluence.content.ResultDto;
 import io.github.adoct.parser.confluence.content.Storage;
 import io.github.adoct.parser.confluence.content.Version;
@@ -77,7 +79,7 @@ public class ConfluenceClient implements ConfluenceGateway {
     public ContentPage getMainPage(String id) {
         HttpUriRequest httpRequest = RequestBuilder.get()
                 .setUri(urlBase + "/content/%s".formatted(id))
-                .addParameter("expand", "version,body.storage,body.view")
+                .addParameter("expand", "version,body.storage,body.view,space,history")
                 .build();
 
         String body = doRequestAndFailIfNot20x(httpRequest);
@@ -100,10 +102,15 @@ public class ConfluenceClient implements ConfluenceGateway {
                 .map(Version::getWhen)
                 .orElse(null);
 
+        String space = Optional.of(contentMainPage).map(ContentMainPage::getSpace).map(s -> s.getKey()).orElse(null);
+        Optional<History> history = Optional.of(contentMainPage).map(ContentMainPage::getHistory);
+        String createdDate = history.map(History::getCreatedDate).orElse(null);
+        String author = history.map(History::getCreatedBy).map(Person::getDisplayName).orElse(null);
+
         Map<String, LinkResult> attachment = getAttachments(id);
 
         return new ContentPage(contentMainPage.getTitle(), host + contentMainPage.getLinks().getWebui(),
-                date, content, view, attachment);
+                date, content, view, attachment, space, createdDate, author);
     }
 
     /**
@@ -142,28 +149,46 @@ public class ConfluenceClient implements ConfluenceGateway {
     @SneakyThrows
     @Override
     public List<String> getChildPageIds(String id) {
-        List<String> ids = new ArrayList<>();
+        return childPages(id).stream().map(PageRef::id).toList();
+    }
+
+    @Override
+    public List<PageRef> childPages(String id) {
+        return pagedRefs(urlBase + "/content/%s/child/page".formatted(id));
+    }
+
+    @Override
+    public List<PageRef> spaceRootPages(String spaceKey) {
+        return pagedRefs(urlBase + "/space/%s/content/page".formatted(spaceKey), "depth", "root");
+    }
+
+    /** Постранично собирает {@code (id, title)} по URL, отдающему {@link ConfluenceSearchResult}. */
+    @SneakyThrows
+    private List<PageRef> pagedRefs(String uri, String... extraParams) {
+        List<PageRef> refs = new ArrayList<>();
         int start = 0;
         int limit = 100;
         while (true) {
-            HttpUriRequest httpRequest = RequestBuilder.get()
-                    .setUri(urlBase + "/content/%s/child/page".formatted(id))
+            RequestBuilder request = RequestBuilder.get()
+                    .setUri(uri)
                     .addParameter("start", String.valueOf(start))
-                    .addParameter("limit", String.valueOf(limit))
-                    .build();
-            String body = doRequestAndFailIfNot20x(httpRequest);
+                    .addParameter("limit", String.valueOf(limit));
+            for (int i = 0; i + 1 < extraParams.length; i += 2) {
+                request.addParameter(extraParams[i], extraParams[i + 1]);
+            }
+            String body = doRequestAndFailIfNot20x(request.build());
             if (body == null) {
                 break;
             }
             ConfluenceSearchResult result = ObjectMapperExt.INSTANT.readValue(body, ConfluenceSearchResult.class);
             List<ResultDto> results = Optional.ofNullable(result.getResults()).orElse(List.of());
-            results.forEach(r -> ids.add(r.getId()));
+            results.forEach(r -> refs.add(new PageRef(r.getId(), r.getTitle())));
             if (results.size() < limit) {
                 break;
             }
             start += results.size();
         }
-        return ids;
+        return refs;
     }
 
     /**

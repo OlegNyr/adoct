@@ -192,41 +192,51 @@ public class ConvertStorageToAdoc {
     }
 
     private static String asciiDocHeader(Map<MetadataKey, Object> metadata, String image, String body) {
-        Object pageId = metadata.get(MetadataKey.PAGE_ID);
-        String idLine = pageId == null ? "" : ":confluency-id: %s\n".formatted(pageId);
-        String version = version(metadata);
-        String versionLine = version == null ? "" : ":confluency-version: %s\n".formatted(version);
+        StringBuilder attrs = new StringBuilder();
+        attr(attrs, "confluency-id", metadata.get(MetadataKey.PAGE_ID));
+        attr(attrs, "confluency-version", value(metadata, MetadataKey.VERSION));
+        attr(attrs, "confluency-url", value(metadata, MetadataKey.URL));
+        attr(attrs, "confluency-space", value(metadata, MetadataKey.SPACE));
+        attr(attrs, "confluency-author", value(metadata, MetadataKey.AUTHOR));
+        attr(attrs, "confluency-created", value(metadata, MetadataKey.CREATED));
         List<String> labels = labels(metadata);
         String keywords = labels.isEmpty() ? "" : ":keywords: %s\n".formatted(String.join(", ", labels));
-        return "= %s\n%s%s%s:toc: macro\n:imagesdir: ./%s\n\n%s\n".formatted(
-                metadata.get(MetadataKey.TITLE), idLine, versionLine, keywords, image, body);
+        return "= %s\n%s%s:toc: macro\n:imagesdir: ./%s\n\n%s\n".formatted(
+                metadata.get(MetadataKey.TITLE), attrs, keywords, image, body);
+    }
+
+    private static void attr(StringBuilder sb, String name, Object value) {
+        if (value != null && !value.toString().isBlank()) {
+            sb.append(':').append(name).append(": ").append(value).append('\n');
+        }
     }
 
     private static String markdownHeader(Map<MetadataKey, Object> metadata, String body) {
-        Object pageId = metadata.get(MetadataKey.PAGE_ID);
-        String version = version(metadata);
-        List<String> labels = labels(metadata);
         StringBuilder front = new StringBuilder();
-        if (pageId != null || version != null || !labels.isEmpty()) {
-            front.append("---\n");
-            if (pageId != null) {
-                front.append("confluency-id: ").append(pageId).append('\n');
-            }
-            if (version != null) {
-                front.append("confluency-version: ").append(version).append('\n');
-            }
-            if (!labels.isEmpty()) {
-                front.append("tags:\n");
-                labels.forEach(l -> front.append("  - ").append(l).append('\n'));
-            }
-            front.append("---\n\n");
+        front(front, "confluency-id", metadata.get(MetadataKey.PAGE_ID));
+        front(front, "confluency-version", value(metadata, MetadataKey.VERSION));
+        front(front, "confluency-url", value(metadata, MetadataKey.URL));
+        front(front, "confluency-space", value(metadata, MetadataKey.SPACE));
+        front(front, "confluency-author", value(metadata, MetadataKey.AUTHOR));
+        front(front, "confluency-created", value(metadata, MetadataKey.CREATED));
+        List<String> labels = labels(metadata);
+        if (!labels.isEmpty()) {
+            front.append("tags:\n");
+            labels.forEach(l -> front.append("  - ").append(l).append('\n'));
         }
-        return "%s# %s\n\n%s\n".formatted(front, metadata.get(MetadataKey.TITLE), body);
+        String frontmatter = front.isEmpty() ? "" : "---\n" + front + "---\n\n";
+        return "%s# %s\n\n%s\n".formatted(frontmatter, metadata.get(MetadataKey.TITLE), body);
     }
 
-    private static String version(Map<MetadataKey, Object> metadata) {
-        Object version = metadata.get(MetadataKey.VERSION);
-        return version == null || version.toString().isBlank() ? null : version.toString();
+    private static void front(StringBuilder sb, String name, Object value) {
+        if (value != null && !value.toString().isBlank()) {
+            sb.append(name).append(": ").append(value).append('\n');
+        }
+    }
+
+    private static String value(Map<MetadataKey, Object> metadata, MetadataKey key) {
+        Object v = metadata.get(key);
+        return v == null || v.toString().isBlank() ? null : v.toString();
     }
 
     @SuppressWarnings("unchecked")

@@ -16,6 +16,7 @@ public class ContentMainPage {
     public Space space;
     public Descendants descendants;
     public Version version;
+    public History history;
     public Body body;
     @JsonProperty("_links")
     public LinksDto links;

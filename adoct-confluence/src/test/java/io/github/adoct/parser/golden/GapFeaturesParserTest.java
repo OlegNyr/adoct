@@ -76,6 +76,29 @@ public class GapFeaturesParserTest extends AbstractConvertParserTest {
         assertTrue(out.contains("  - docs"));
     }
 
+    // --- метаданные страницы в заголовке/frontmatter -----------------------
+
+    @Test
+    public void pageMetadataInAsciiDocHeaderAndMarkdownFrontmatter() throws IOException {
+        Map<MetadataKey, Object> meta = Map.of(
+                MetadataKey.PAGE_ID, "123",
+                MetadataKey.URL, "https://wiki/x",
+                MetadataKey.SPACE, "DOC",
+                MetadataKey.AUTHOR, "Иван Иванов",
+                MetadataKey.CREATED, "2024-01-01T00:00:00.000+0000");
+        String adoc = convert("<p>текст</p>", meta);
+        assertTrue(adoc.contains(":confluency-url: https://wiki/x"));
+        assertTrue(adoc.contains(":confluency-space: DOC"));
+        assertTrue(adoc.contains(":confluency-author: Иван Иванов"));
+        assertTrue(adoc.contains(":confluency-created: 2024-01-01T00:00:00.000+0000"));
+
+        String out = md("<p>текст</p>", meta);
+        assertTrue(out.contains("---"));
+        assertTrue(out.contains("confluency-space: DOC"));
+        assertTrue(out.contains("confluency-author: Иван Иванов"));
+        assertTrue(out.contains("confluency-url: https://wiki/x"));
+    }
+
     // --- подпись к картинке ------------------------------------------------
 
     @Test

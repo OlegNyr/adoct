@@ -19,6 +19,23 @@ public interface ConfluenceGateway {
     /** ID дочерних страниц (прямых потомков) данной страницы, в порядке Confluence. */
     List<String> getChildPageIds(String id);
 
+    /** Ссылка на страницу поддерева: ID + заголовок (для карты дерева при межстраничных ссылках). */
+    record PageRef(String id, String title) {
+    }
+
+    /**
+     * Дочерние страницы с заголовками (id + title) — для построения карты дерева. По умолчанию —
+     * из {@link #getChildPageIds} без заголовков (тогда локальные перекрёстные ссылки недоступны).
+     */
+    default List<PageRef> childPages(String id) {
+        return getChildPageIds(id).stream().map(childId -> new PageRef(childId, null)).toList();
+    }
+
+    /** Корневые страницы пространства (верхний уровень дерева) — для выгрузки пространства целиком. */
+    default List<PageRef> spaceRootPages(String spaceKey) {
+        return List.of();
+    }
+
     /** Ищет страницу по заголовку (и опционально ключу пространства). */
     List<LinkResult> search(String title, String key);
 

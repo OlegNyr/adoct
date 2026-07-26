@@ -200,6 +200,91 @@ public class DispatcherPageIntegrationTest {
     }
 
     @Test
+    public void crossPageLinksBecomeLocalRelativePaths() throws IOException {
+        CrossLinkGateway gateway = new CrossLinkGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("p", (t, v) -> { });
+
+        String parent = Files.readString(tmp.resolve("Родитель").resolve("index.adoc")).replace("\r\n", "\n");
+        String child = Files.readString(tmp.resolve("Родитель").resolve("Ребёнок").resolve("index.adoc"))
+                .replace("\r\n", "\n");
+        // родитель → ребёнок: локальная ссылка в подпапку
+        assertTrue(parent, parent.contains("link:Ребёнок/index.adoc[Ребёнок]"));
+        // ребёнок → родитель: относительная ссылка вверх
+        assertTrue(child, child.contains("link:../index.adoc[Родитель]"));
+        // ссылка на страницу вне выгрузки остаётся URL Confluence
+        assertTrue(parent, parent.contains("link:http://confluence/page/Внешняя[Внешняя]"));
+    }
+
+    @Test
+    public void crossPageLinksLocalInMarkdown() throws IOException {
+        CrossLinkGateway gateway = new CrossLinkGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+        dispatcher.setFormat(OutputFormat.MD);
+
+        dispatcher.generate("p", (t, v) -> { });
+
+        String parent = Files.readString(tmp.resolve("Родитель").resolve("index.md")).replace("\r\n", "\n");
+        assertTrue(parent, parent.contains("[Ребёнок](Ребёнок/index.md)"));
+    }
+
+    @Test
+    public void crossPageLinksStayUrlsWhenDisabled() throws IOException {
+        CrossLinkGateway gateway = new CrossLinkGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+        dispatcher.setCrossPageLinks(false);
+
+        dispatcher.generate("p", (t, v) -> { });
+
+        String parent = Files.readString(tmp.resolve("Родитель").resolve("index.adoc")).replace("\r\n", "\n");
+        assertFalse(parent, parent.contains("Ребёнок/index.adoc"));
+        assertTrue(parent, parent.contains("link:http://confluence/page/Ребёнок[Ребёнок]"));
+    }
+
+    @Test
+    public void childrenMacroBecomesListOfLocalLinks() throws IOException {
+        ChildrenGateway gateway = new ChildrenGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("p", (t, v) -> { });
+
+        String parent = Files.readString(tmp.resolve("Родитель").resolve("index.adoc")).replace("\r\n", "\n");
+        assertTrue(parent, parent.contains("* link:Раздел A/index.adoc[Раздел A]"));
+        assertTrue(parent, parent.contains("* link:Раздел B/index.adoc[Раздел B]"));
+    }
+
+    @Test
+    public void childrenMacroLocalLinksInMarkdown() throws IOException {
+        ChildrenGateway gateway = new ChildrenGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+        dispatcher.setFormat(OutputFormat.MD);
+
+        dispatcher.generate("p", (t, v) -> { });
+
+        String parent = Files.readString(tmp.resolve("Родитель").resolve("index.md")).replace("\r\n", "\n");
+        assertTrue(parent, parent.contains("- [Раздел A](Раздел A/index.md)"));
+        assertTrue(parent, parent.contains("- [Раздел B](Раздел B/index.md)"));
+    }
+
+    @Test
+    public void exportsWholeSpaceWithRootPagesAndCrossLinks() throws IOException {
+        SpaceGateway gateway = new SpaceGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        String space = dispatcher.generateSpace("DOC", (t, v) -> { });
+
+        assertEquals("DOC", space);
+        // обе корневые страницы + поддерево первой
+        assertTrue(Files.exists(tmp.resolve("Гайд").resolve("index.adoc")));
+        assertTrue(Files.exists(tmp.resolve("API").resolve("index.adoc")));
+        assertTrue(Files.exists(tmp.resolve("Гайд").resolve("Установка").resolve("index.adoc")));
+        // перекрёстная ссылка между корнями резолвится локально
+        String guide = Files.readString(tmp.resolve("Гайд").resolve("index.adoc")).replace("\r\n", "\n");
+        assertTrue(guide, guide.contains("link:../API/index.adoc[API]"));
+    }
+
+    @Test
     public void exportsChildPagesIntoSubfolders() throws IOException {
         TreeGateway gateway = new TreeGateway();
         DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
@@ -270,6 +355,113 @@ public class DispatcherPageIntegrationTest {
         @Override
         public void loadAttach(Collection<LinkResult> values, Path attachmentFolder, Consumer<String> progress) {
             loadAttachCalls.incrementAndGet();
+        }
+    }
+
+    /**
+     * Фейк с деревом «Родитель → Ребёнок», где страницы ссылаются друг на друга (и на внешнюю страницу),
+     * с заголовками потомков в {@code childPages} — для проверки локальных перекрёстных ссылок.
+     */
+    private static class CrossLinkGateway extends FakeGateway {
+        private final Map<String, ConfluenceGateway.PageRef> refs = Map.of(
+                "p", new ConfluenceGateway.PageRef("p", "Родитель"),
+                "c", new ConfluenceGateway.PageRef("c", "Ребёнок"));
+
+        CrossLinkGateway() {
+            super(null);
+        }
+
+        private static String linkTo(String title) {
+            return "<p>См. <ac:link><ri:page ri:content-title=\"" + title + "\" ri:space-key=\"DOC\"/>"
+                    + "<ac:plain-text-link-body>" + title + "</ac:plain-text-link-body></ac:link></p>";
+        }
+
+        @Override
+        public ContentPage getMainPage(String id) {
+            ConfluenceGateway.PageRef ref = refs.get(id);
+            String content = "p".equals(id)
+                    ? "<h1>" + ref.title() + "</h1>" + linkTo("Ребёнок") + linkTo("Внешняя")
+                    : "<h1>" + ref.title() + "</h1>" + linkTo("Родитель");
+            return new ContentPage(ref.title(), "http://confluence/" + ref.title(),
+                    "2024-01-01T00:00:00.000+0000", content, "<p>view</p>", Map.of());
+        }
+
+        @Override
+        public List<ConfluenceGateway.PageRef> childPages(String id) {
+            return "p".equals(id) ? List.of(refs.get("c")) : List.of();
+        }
+
+        @Override
+        public List<String> getChildPageIds(String id) {
+            return childPages(id).stream().map(ConfluenceGateway.PageRef::id).toList();
+        }
+    }
+
+    /** Фейк пространства «DOC»: два корня (Гайд→Установка, API), Гайд ссылается на API. */
+    private static class SpaceGateway extends FakeGateway {
+        private final Map<String, String> titles = Map.of(
+                "r1", "Гайд", "c1", "Установка", "r2", "API");
+
+        SpaceGateway() {
+            super(null);
+        }
+
+        @Override
+        public List<ConfluenceGateway.PageRef> spaceRootPages(String spaceKey) {
+            return List.of(new ConfluenceGateway.PageRef("r1", "Гайд"),
+                    new ConfluenceGateway.PageRef("r2", "API"));
+        }
+
+        @Override
+        public ContentPage getMainPage(String id) {
+            String title = titles.get(id);
+            String link = "<p>См. <ac:link><ri:page ri:content-title=\"API\" ri:space-key=\"DOC\"/>"
+                    + "<ac:plain-text-link-body>API</ac:plain-text-link-body></ac:link></p>";
+            String content = "r1".equals(id) ? "<h1>Гайд</h1>" + link : "<h1>" + title + "</h1><p>тело</p>";
+            return new ContentPage(title, "http://confluence/" + title, "2024-01-01T00:00:00.000+0000",
+                    content, "<p>view</p>", Map.of());
+        }
+
+        @Override
+        public List<ConfluenceGateway.PageRef> childPages(String id) {
+            return "r1".equals(id) ? List.of(new ConfluenceGateway.PageRef("c1", "Установка")) : List.of();
+        }
+
+        @Override
+        public List<String> getChildPageIds(String id) {
+            return childPages(id).stream().map(ConfluenceGateway.PageRef::id).toList();
+        }
+    }
+
+    /** Фейк «Родитель + два раздела» с макросом {@code children} в теле родителя. */
+    private static class ChildrenGateway extends FakeGateway {
+        private final Map<String, String> titles = Map.of("p", "Родитель", "a", "Раздел A", "b", "Раздел B");
+
+        ChildrenGateway() {
+            super(null);
+        }
+
+        @Override
+        public ContentPage getMainPage(String id) {
+            String title = titles.get(id);
+            String content = "p".equals(id)
+                    ? "<h1>Родитель</h1><ac:structured-macro ac:name=\"children\"/>"
+                    : "<h1>" + title + "</h1><p>тело</p>";
+            return new ContentPage(title, "http://confluence/" + title, "2024-01-01T00:00:00.000+0000",
+                    content, "<p>view</p>", Map.of());
+        }
+
+        @Override
+        public List<ConfluenceGateway.PageRef> childPages(String id) {
+            return "p".equals(id)
+                    ? List.of(new ConfluenceGateway.PageRef("a", "Раздел A"),
+                            new ConfluenceGateway.PageRef("b", "Раздел B"))
+                    : List.of();
+        }
+
+        @Override
+        public List<String> getChildPageIds(String id) {
+            return childPages(id).stream().map(ConfluenceGateway.PageRef::id).toList();
         }
     }
 

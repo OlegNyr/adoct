@@ -62,6 +62,10 @@ public final class ConfluenceExportUiStateService implements PersistentStateComp
         state.skipUnchanged = skipUnchanged;
     }
 
+    public void setExportSpace(boolean exportSpace) {
+        state.exportSpace = exportSpace;
+    }
+
     public String getLastUrl() {
         return state.lastUrl == null ? "" : state.lastUrl;
     }
@@ -98,6 +102,10 @@ public final class ConfluenceExportUiStateService implements PersistentStateComp
         return state.skipUnchanged;
     }
 
+    public boolean isExportSpace() {
+        return state.exportSpace;
+    }
+
     public static final class StateData {
         public String lastUrl = "";
         public String lastDirectory = "";
@@ -108,5 +116,6 @@ public final class ConfluenceExportUiStateService implements PersistentStateComp
         public boolean includeAttachments = true;
         public String format = "adoc";
         public boolean skipUnchanged = true;
+        public boolean exportSpace = false;
     }
 }

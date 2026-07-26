@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jsoup.nodes.Element;
 import io.github.adoct.parser.ast.Block;
 import io.github.adoct.parser.build.macro.AnchorMacro;
+import io.github.adoct.parser.build.macro.ChildrenMacro;
 import io.github.adoct.parser.build.macro.CodeMacro;
 import io.github.adoct.parser.build.macro.DetailsMacro;
 import io.github.adoct.parser.build.macro.DrawioMacro;
@@ -44,6 +45,7 @@ public final class MacroBuilder {
                 new IgnoreOkMacro(blocks),
                 new ExpandMacro(blocks),
                 new DetailsMacro(blocks),
+                new ChildrenMacro(blocks),
                 new JiraMacro(blocks),
                 new NumberMacro(blocks),
                 new DrawioMacro(blocks),

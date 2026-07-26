@@ -13,8 +13,9 @@ import io.github.adoct.parser.confluence.ObjectMapperExt;
 import java.nio.file.Path;
 
 /**
- * {@code confluence_export_tree_to_adoc} — экспортирует страницу Confluence и её поддерево в локальное
- * дерево AsciiDoc через {@link DispatcherPage}. Читает Confluence, пишет файлы; саму страницу не меняет.
+ * {@code confluence_export_tree_to_adoc} — экспортирует Confluence в локальное дерево AsciiDoc/Markdown
+ * через {@link DispatcherPage}. По умолчанию — страница и её поддерево; при заданном {@code spaceKey} —
+ * всё пространство целиком. Читает Confluence, пишет файлы; сами страницы не меняет.
  */
 public final class ConfluenceExportTreeToAdoc implements Tool {
 
@@ -23,6 +24,7 @@ public final class ConfluenceExportTreeToAdoc implements Tool {
         ObjectNode schema = InputSchema.object()
                 .str("pageId", "ID страницы (либо url)", false)
                 .str("url", "URL страницы (?pageId=… или /display/SPACE/Title), если нет pageId", false)
+                .str("spaceKey", "Ключ пространства — выгрузить пространство целиком (вместо страницы)", false)
                 .str("targetDir", "Абсолютный путь папки назначения", true)
                 .bool("includeChildren", "Выгружать дерево дочерних (по умолчанию true)", false)
                 .bool("includeAttachments", "Скачивать вложения (по умолчанию true)", false)
@@ -33,10 +35,10 @@ public final class ConfluenceExportTreeToAdoc implements Tool {
                 .str("host", "Хост Confluence; иначе хост по умолчанию", false)
                 .build();
         return new McpTool("confluence_export_tree_to_adoc",
-                "Экспортировать страницу Confluence и её поддерево в локальное дерево AsciiDoc "
-                        + "(читает Confluence, пишет файлы; саму страницу не меняет).", schema, args -> {
+                "Экспортировать Confluence в локальное дерево AsciiDoc/Markdown: страницу с поддеревом или "
+                        + "(при spaceKey) всё пространство. Читает Confluence, пишет файлы; страницы не меняет.",
+                schema, args -> {
             ConfluenceClient client = c.confluence(args);
-            String pageId = c.resolvePageId(client, c.text(args, "pageId"), c.text(args, "url"));
             DispatcherPage dp = new DispatcherPage(client, Path.of(c.reqStr(args, "targetDir")),
                     ObjectMapperExt.INSTANT);
             dp.setIncludeChildren(c.optBool(args, "includeChildren", true));
@@ -45,11 +47,17 @@ public final class ConfluenceExportTreeToAdoc implements Tool {
             dp.setDebug(c.optBool(args, "debug", false));
             dp.setFormat(OutputFormat.from(c.text(args, "format")));
             dp.setSkipUnchanged(c.optBool(args, "skipUnchanged", true));
-            String title = dp.generate(pageId, (t, s) -> { });
             ObjectNode out = c.mapper().createObjectNode();
-            out.put("title", title);
-            out.put("pageId", pageId);
-            out.put("outputDir", String.valueOf(dp.getDestination()));
+            String spaceKey = c.text(args, "spaceKey");
+            if (spaceKey != null && !spaceKey.isBlank()) {
+                dp.generateSpace(spaceKey.trim(), (t, s) -> { });
+                out.put("spaceKey", spaceKey.trim());
+            } else {
+                String pageId = c.resolvePageId(client, c.text(args, "pageId"), c.text(args, "url"));
+                out.put("title", dp.generate(pageId, (t, s) -> { }));
+                out.put("pageId", pageId);
+            }
+            out.put("outputDir", String.valueOf(Path.of(c.reqStr(args, "targetDir"))));
             return c.ok(out);
         });
     }

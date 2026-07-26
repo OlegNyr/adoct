@@ -9,9 +9,12 @@ import org.jetbrains.annotations.NotNull;
 import io.github.adoct.plugins.idea.settings.ConfluenceSettingsService;
 import io.github.adoct.parser.DispatcherPage;
 import io.github.adoct.parser.OutputFormat;
+import io.github.adoct.parser.ProgressCallback;
 import io.github.adoct.parser.confluence.ConfluenceClient;
 import io.github.adoct.parser.confluence.ObjectMapperExt;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -28,7 +31,7 @@ public final class ConvertDocsUrlToAdoc {
 
     public String convert(String url, Path targetDir, boolean exportColors, boolean debug,
                           boolean includeChildren, boolean includeAttachments, OutputFormat format,
-                          boolean skipUnchanged, @NotNull ProgressIndicator indicator) {
+                          boolean skipUnchanged, boolean exportSpace, @NotNull ProgressIndicator indicator) {
         indicator.checkCanceled();
         indicator.setIndeterminate(false);
         indicator.setFraction(0.1);
@@ -52,13 +55,16 @@ public final class ConvertDocsUrlToAdoc {
         dispatcherPage.setSkipUnchanged(skipUnchanged);
 
         try {
-            String title = dispatcherPage.generate(resolvePageId(confluenceClient, url), (text, step) -> {
+            ProgressCallback progress = (text, step) -> {
                 if (text != null) {
                     indicator.setText2(text);
                 }
                 indicator.setFraction(indicator.getFraction() + step);
                 indicator.checkCanceled();
-            });
+            };
+            String title = exportSpace
+                    ? dispatcherPage.generateSpace(extractSpaceKey(url), progress)
+                    : dispatcherPage.generate(resolvePageId(confluenceClient, url), progress);
 
             indicator.checkCanceled();
             indicator.setFraction(1.0);
@@ -107,6 +113,19 @@ public final class ConvertDocsUrlToAdoc {
     public static Optional<String> extractPageId(@NotNull String url) {
         Matcher matcher = Pattern.compile("pageId=(\\d+)").matcher(url);
         return matcher.find() ? Optional.of(matcher.group(1)) : Optional.empty();
+    }
+
+    /**
+     * Извлекает ключ пространства из URL Confluence ({@code /display/SPACE...} или {@code /spaces/SPACE...}).
+     *
+     * @throws IllegalArgumentException если ключ пространства из URL не извлечь
+     */
+    public static String extractSpaceKey(@NotNull String url) {
+        Matcher matcher = Pattern.compile("/(?:display|spaces)/([^/?#]+)").matcher(url);
+        if (matcher.find()) {
+            return URLDecoder.decode(matcher.group(1), StandardCharsets.UTF_8);
+        }
+        throw new IllegalArgumentException("Не удалось определить пространство из URL: " + url);
     }
 
 }

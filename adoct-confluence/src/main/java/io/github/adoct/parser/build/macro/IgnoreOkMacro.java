@@ -23,7 +23,7 @@ public final class IgnoreOkMacro extends AbstractNodeMacro {
 
     @Override
     public Set<String> names() {
-        return Set.of("expandall", "children", "detailssummary", "contentbylabel", "attachments");
+        return Set.of("expandall", "detailssummary", "contentbylabel", "attachments");
     }
 
     @Override

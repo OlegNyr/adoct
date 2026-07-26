@@ -11,6 +11,12 @@ public enum MetadataKey {
         PAGE_ID("pageId"),
         URL("url"),
         CREATE("create"),
+        /** Ключ пространства Confluence → {@code :confluency-space:} / frontmatter {@code confluency-space}. */
+        SPACE("space"),
+        /** Автор (создатель) страницы → {@code :confluency-author:} / frontmatter {@code confluency-author}. */
+        AUTHOR("author"),
+        /** Дата создания страницы → {@code :confluency-created:} / frontmatter {@code confluency-created}. */
+        CREATED("created"),
         ATTACH_FOLDER("attachFolder"),
         ATTACH_FOLDER_NAME("attachFolderName"),
         IMAGE("image"),
@@ -20,6 +26,11 @@ public enum MetadataKey {
         COLOR("color"),
         /** Метки страницы Confluence ({@code List<String>}) → {@code :keywords:} (adoc) / {@code tags} (md). */
         LABELS("labels"),
+        /**
+         * Прямые дочерние страницы ({@code List<LinkResult>}: заголовок + относительный путь на её
+         * {@code index.<ext>}) — для макроса {@code children} (статический список ссылок).
+         */
+        CHILDREN("children"),
         /**
          * Версия страницы ({@code version.when}) — пишется в заголовок ({@code :confluency-version:} /
          * frontmatter {@code confluency-version}) и служит признаком изменения при инкрементальной выгрузке.
