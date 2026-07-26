@@ -4,12 +4,17 @@ import com.intellij.ide.actions.RevealFileAction;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.PathManager;
+import com.intellij.openapi.fileChooser.FileChooserFactory;
+import com.intellij.openapi.fileChooser.FileSaverDescriptor;
+import com.intellij.openapi.fileChooser.FileSaverDialog;
 import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.ui.DialogBuilder;
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileWrapper;
 import com.intellij.ui.DoubleClickListener;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.ToolbarDecorator;
@@ -31,6 +36,9 @@ import java.awt.FlowLayout;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.MouseEvent;
 import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -143,18 +151,63 @@ public final class McpSettingsConfigurable implements Configurable {
         return row;
     }
 
-    /** Строка диагностики: открыть idea.log и выгрузить список тулов с живого сервера в буфер. */
+    /** Строка диагностики: открыть idea.log, выгрузить список тулов и экспортировать конфиг CLI. */
     private JComponent diagRow() {
         JButton openLog = new JButton("Открыть лог");
         openLog.addActionListener(e ->
                 RevealFileAction.openFile(new File(PathManager.getLogPath(), "idea.log")));
         JButton toolsToClipboard = new JButton("Список тулов → буфер");
         toolsToClipboard.addActionListener(e -> copyToolsToClipboard());
+        JButton exportConfig = new JButton("Экспорт конфига → JSON");
+        exportConfig.addActionListener(e -> exportConfig());
 
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
         row.add(openLog);
         row.add(toolsToClipboard);
+        row.add(exportConfig);
         return row;
+    }
+
+    /**
+     * Экспортирует настройки (эндпоинты, дефолты, команда, шаблоны) в JSON-конфиг CLI MCP-сервера
+     * ({@code java -jar adoct-mcp.jar --config …}). Спрашивает, класть ли реальные токены или
+     * плейсхолдеры {@code ${MCP_TOKEN_N}}. Берёт СОХРАНЁННЫЕ настройки — сначала нажмите «Применить».
+     */
+    private void exportConfig() {
+        int choice = Messages.showYesNoCancelDialog(panel,
+                "Включить реальные токены доступа в файл?\n\n"
+                        + "«С токенами» — токены пишутся как есть (не коммитьте файл!).\n"
+                        + "«Плейсхолдеры» — вместо токенов ${MCP_TOKEN_N} (значения из переменных окружения).\n\n"
+                        + "Экспортируются СОХРАНЁННЫЕ настройки — при несохранённых правках нажмите «Применить».",
+                "Экспорт конфигурации MCP", "С токенами", "Плейсхолдеры", "Отмена", Messages.getQuestionIcon());
+        if (choice != Messages.YES && choice != Messages.NO) {
+            return;
+        }
+        String json;
+        try {
+            json = McpConfigExporter.toJson(choice == Messages.YES);
+        } catch (Exception ex) {
+            Messages.showErrorDialog(panel, "Не удалось собрать конфиг: " + ex.getMessage(), "Экспорт конфигурации MCP");
+            return;
+        }
+
+        FileSaverDescriptor descriptor =
+                new FileSaverDescriptor("Экспорт конфига MCP", "Сохранить настройки MCP в JSON", "json");
+        FileSaverDialog dialog = FileChooserFactory.getInstance().createSaveFileDialog(descriptor, panel);
+        VirtualFileWrapper wrapper = dialog.save((VirtualFile) null, "adoct-mcp.config.json");
+        if (wrapper == null) {
+            return;
+        }
+        File file = wrapper.getFile();
+        try {
+            Files.writeString(file.toPath(), json, StandardCharsets.UTF_8);
+        } catch (IOException io) {
+            Messages.showErrorDialog(panel, "Не удалось записать файл: " + io.getMessage(), "Экспорт конфигурации MCP");
+            return;
+        }
+        Messages.showInfoMessage(panel,
+                "Сохранено: " + file + "\n\nЗапуск: java -jar adoct-mcp.jar --config \"" + file.getName() + "\"",
+                "Экспорт конфигурации MCP");
     }
 
     /** Тянет {@code tools/list} с живого сервера (off-EDT), кладёт список в буфер и показывает счётчик. */

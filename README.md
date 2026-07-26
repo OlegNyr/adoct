@@ -68,6 +68,27 @@ An embedded [Model Context Protocol](https://modelcontextprotocol.io/) server ex
 Confluence and Bitbucket tools. It runs inside the IDE plugin, as a standalone CLI, or as a GraalVM
 native image.
 
+Run the standalone server (fat JAR from the release, or `./gradlew :adoct-mcp-jar:shadowJar`):
+
+```bash
+# stdio (default) — a desktop MCP client spawns this once per session
+java -jar adoct-mcp.jar
+
+# HTTP (Streamable HTTP) — listens on http://127.0.0.1:7337/mcp
+java -jar adoct-mcp.jar --http
+#   --port 7337   --bind 127.0.0.1      (or env MCP_PORT / MCP_BIND / MCP_TRANSPORT=http)
+```
+
+Point an HTTP-capable MCP client at `http://<bind>:<port>/mcp`. Requests run on a small thread pool
+(up to 4 concurrent); `initialize` returns an `Mcp-Session-Id` header. The default bind is
+`127.0.0.1` (localhost only) — if you expose it with `--bind 0.0.0.0`, put it behind a reverse
+proxy/firewall, since the `/mcp` endpoint itself is unauthenticated and carries your Atlassian tokens.
+
+Endpoints (host + token per Jira/Confluence/Bitbucket) come from a JSON config (`--config` /
+`MCP_CONFIG`) or quick env vars (`MCP_HOST` / `MCP_TOKEN` / `MCP_KIND`) — see
+[`adoct-mcp-jar/README.md`](adoct-mcp-jar/README.md). The IntelliJ plugin can generate that JSON for
+you: **Settings → Tools → AsciiDocTools → MCP server → Export config → JSON**.
+
 ## Install the IntelliJ plugin
 
 The plugin is distributed through a custom plugin repository on GitHub Pages (not the JetBrains

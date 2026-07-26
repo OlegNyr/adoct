@@ -29,6 +29,30 @@ java -jar adoct-mcp.jar --http
 # port/host: --port 7337  --bind 127.0.0.1
 ```
 
+### HTTP mode
+
+`--http` (or `MCP_TRANSPORT=http`, or `"transport": "http"` in the config) serves one endpoint,
+`POST /mcp` (Streamable HTTP, `application/json`):
+
+```bash
+# with a single endpoint from the environment
+MCP_HOST=https://confluence.example.com MCP_TOKEN=<PAT> \
+  java -jar adoct-mcp.jar --http --port 7337 --bind 127.0.0.1
+
+# or a full config file
+java -jar adoct-mcp.jar --http --config adoct-mcp.json
+```
+
+- Point an HTTP-capable MCP client at `http://<bind>:<port>/mcp`. The `initialize` response carries an
+  `Mcp-Session-Id` header.
+- Concurrency: a fixed pool of **4** threads (a 5th request queues). stdio, by contrast, is strictly
+  sequential.
+- **Security:** the `/mcp` endpoint is unauthenticated and your Atlassian tokens live behind it. The
+  default `--bind 127.0.0.1` keeps it on localhost; if you bind `0.0.0.0`, front it with a reverse
+  proxy/firewall.
+- The IntelliJ plugin can export a ready-to-use config: **Settings → Tools → AsciiDocTools → MCP
+  server → Export config → JSON** (choose real tokens or `${ENV}` placeholders).
+
 ## Configuration (JSON)
 
 Full configuration is a JSON file; its path is passed via `--config <path>` or the `MCP_CONFIG`
