@@ -60,4 +60,34 @@ public class FileLinkRenderTest {
         assertFalse(result.xhtml(), result.xhtml().contains("ri:attachment"));
         assertTrue(result.images().isEmpty());
     }
+
+    @Test
+    public void percentEncodedSpacesInFileNameResolveToAttachment() throws Exception {
+        // так пишет экспорт: в link: цель с пробелом не распознаётся, поэтому пробел кодируется как %20
+        Path dir = tmp.getRoot().toPath();
+        Files.writeString(dir.resolve("спец версия.pdf"), "%PDF-1.4", StandardCharsets.UTF_8);
+        Path main = dir.resolve("main.adoc");
+        Files.writeString(main, "= T\n\nСм. link:спец%20версия.pdf[спецификация].\n", StandardCharsets.UTF_8);
+
+        RenderResult result = render(main);
+        assertTrue(result.xhtml(), result.xhtml().contains(
+                "<ac:link><ri:attachment ri:filename=\"спец версия.pdf\"/>"
+                        + "<ac:link-body>спецификация</ac:link-body></ac:link>"));
+        assertTrue(result.images().toString(),
+                result.images().stream().anyMatch(p -> p.getFileName().toString().equals("спец версия.pdf")));
+    }
+
+    @Test
+    public void imageWithSpacesInFileNameBecomesAttachment() throws Exception {
+        // AsciiDoctor сам кодирует пробелы в src — без декодирования файл не находился
+        Path dir = tmp.getRoot().toPath();
+        Files.writeString(dir.resolve("Рис 2. Новости.png"), "png", StandardCharsets.UTF_8);
+        Path main = dir.resolve("main.adoc");
+        Files.writeString(main, "= T\n\nimage::Рис 2. Новости.png[]\n", StandardCharsets.UTF_8);
+
+        RenderResult result = render(main);
+        assertTrue(result.xhtml(), result.xhtml().contains("ri:filename=\"Рис 2. Новости.png\""));
+        assertTrue(result.images().toString(),
+                result.images().stream().anyMatch(p -> p.getFileName().toString().equals("Рис 2. Новости.png")));
+    }
 }

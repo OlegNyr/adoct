@@ -139,6 +139,45 @@ public class ConvertStorageToAdoc {
         return Set.copyOf(res);
     }
 
+    /**
+     * Имена файлов всех картинок-вложений тела страницы ({@code <ac:image><ri:attachment ri:filename>}).
+     * Часть из них может лежать на другой странице (вложенный {@code <ri:page>}) — тогда в карте вложений
+     * текущей страницы их нет, и URL нужно брать из rendered view ({@link #imageSources()}).
+     */
+    public Set<String> imageAttachments() {
+        Set<String> res = new HashSet<>();
+        for (Element image : document.getElementsByTag("ac:image")) {
+            String filename = image.getElementsByTag("ri:attachment").attr("ri:filename");
+            if (StringUtils.isNotBlank(filename)) {
+                res.add(filename);
+            }
+        }
+        return res;
+    }
+
+    /**
+     * Карта {@code имя файла картинки → ссылка на скачивание} из rendered view. Confluence уже
+     * отрезолвил в нём вложения любых страниц, поэтому это единственный источник URL для картинок,
+     * лежащих не на текущей странице. Ссылки — как их отдаёт Confluence (обычно относительные от хоста).
+     */
+    public Map<String, String> imageSources() {
+        Map<String, String> res = new HashMap<>();
+        if (StringUtils.isBlank(view)) {
+            return res;
+        }
+        for (Element img : Jsoup.parse(view, UTF_8.name()).getElementsByTag("img")) {
+            String name = img.attr("data-linked-resource-default-alias");
+            String src = img.attr("data-image-src");
+            if (StringUtils.isBlank(src)) {
+                src = img.attr("src");
+            }
+            if (StringUtils.isNoneBlank(name, src)) {
+                res.putIfAbsent(name, src);
+            }
+        }
+        return res;
+    }
+
     @SneakyThrows
     public void convert(Map<MetadataKey, Object> metadata, Path attachment) {
         Path index = destination.resolve(format.indexFileName());

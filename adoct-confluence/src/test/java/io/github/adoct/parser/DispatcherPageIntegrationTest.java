@@ -11,6 +11,7 @@ import io.github.adoct.parser.confluence.ObjectMapperExt;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
@@ -250,8 +251,9 @@ public class DispatcherPageIntegrationTest {
         dispatcher.generate("p", (t, v) -> { });
 
         String parent = Files.readString(tmp.resolve("Родитель").resolve("index.adoc")).replace("\r\n", "\n");
-        assertTrue(parent, parent.contains("* link:Раздел A/index.adoc[Раздел A]"));
-        assertTrue(parent, parent.contains("* link:Раздел B/index.adoc[Раздел B]"));
+        // пробел в имени папки кодируется — иначе AsciiDoctor не распознает цель ссылки
+        assertTrue(parent, parent.contains("* link:Раздел%20A/index.adoc[Раздел A]"));
+        assertTrue(parent, parent.contains("* link:Раздел%20B/index.adoc[Раздел B]"));
     }
 
     @Test
@@ -263,8 +265,8 @@ public class DispatcherPageIntegrationTest {
         dispatcher.generate("p", (t, v) -> { });
 
         String parent = Files.readString(tmp.resolve("Родитель").resolve("index.md")).replace("\r\n", "\n");
-        assertTrue(parent, parent.contains("- [Раздел A](Раздел A/index.md)"));
-        assertTrue(parent, parent.contains("- [Раздел B](Раздел B/index.md)"));
+        assertTrue(parent, parent.contains("- [Раздел A](Раздел%20A/index.md)"));
+        assertTrue(parent, parent.contains("- [Раздел B](Раздел%20B/index.md)"));
     }
 
     @Test
@@ -321,6 +323,91 @@ public class DispatcherPageIntegrationTest {
         // Ссылки всё ещё на месте
         String index = Files.readString(tmp.resolve("Главная").resolve("index.adoc")).replace("\r\n", "\n");
         assertTrue(index.contains("link:http://confluence/display/~u-123[Иван]"));
+    }
+
+    @Test
+    public void missingPageDoesNotFailExport() throws IOException {
+        NotFoundGateway gateway = new NotFoundGateway(page());
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        String title = dispatcher.generate("123", (text, v) -> { });
+
+        assertEquals("Главная", title);
+        // Ненайденная страница не роняет экспорт, остальные ссылки на месте
+        String index = Files.readString(tmp.resolve("Главная").resolve("index.adoc")).replace("\r\n", "\n");
+        assertTrue(index, index.contains("= Главная"));
+        assertTrue(index, index.contains("link:attache/doc.pdf[doc.pdf]"));
+    }
+
+    @Test
+    public void relativeViewLinkBecomesAbsolute() throws IOException {
+        // view отдаёт ссылку относительной от хоста — в .adoc она должна попасть абсолютной
+        ContentPage page = new ContentPage("Главная", "http://confluence/Главная", "2024-01-01T00:00:00.000+0000",
+                CONTENT, "<p><a href=\"/pages/viewpage.action?pageId=42\">Другая</a></p>", Map.of());
+        DispatcherPage dispatcher = new DispatcherPage(new HostedGateway(page), tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("123", (text, v) -> { });
+
+        String index = Files.readString(tmp.resolve("Главная").resolve("index.adoc")).replace("\r\n", "\n");
+        assertTrue(index, index.contains("link:http://confluence/pages/viewpage.action?pageId=42[Другая]"));
+    }
+
+    @Test
+    public void imageFromAnotherPageIsDownloaded() {
+        String content = "<h1>Главная</h1><p><ac:image><ri:attachment ri:filename=\"чужая.png\">"
+                + "<ri:page ri:content-title=\"Картинки\"/></ri:attachment></ac:image></p>";
+        String view = "<p><img src=\"/download/thumbnails/999/%D1%87%D1%83%D0%B6%D0%B0%D1%8F.png\""
+                + " data-image-src=\"/download/attachments/999/%D1%87%D1%83%D0%B6%D0%B0%D1%8F.png?version=1\""
+                + " data-linked-resource-default-alias=\"чужая.png\"/></p>";
+        ContentPage page = new ContentPage("Главная", "http://confluence/Главная", "2024-01-01T00:00:00.000+0000",
+                content, view, Map.of());
+        RecordingGateway gateway = new RecordingGateway(page);
+
+        new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT).generate("123", (text, v) -> { });
+
+        assertEquals(List.of("чужая.png"), gateway.loaded.stream().map(LinkResult::title).toList());
+        assertEquals("/download/attachments/999/%D1%87%D1%83%D0%B6%D0%B0%D1%8F.png?version=1",
+                gateway.loaded.getFirst().url());
+    }
+
+    @Test
+    public void confluencePageUrlsBecomeLocalPaths() throws IOException {
+        UrlLinkGateway gateway = new UrlLinkGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("p", (t, v) -> { });
+
+        String parent = Files.readString(tmp.resolve("Родитель").resolve("index.adoc")).replace("\r\n", "\n");
+        // «сырой» <a href> по pageId → путь к файлу дочерней страницы
+        assertTrue(parent, parent.contains("link:Ребёнок/index.adoc[по id]"));
+        // «человеческий» /display/SPACE/Title → тот же путь, якорь сохраняется
+        assertTrue(parent, parent.contains("link:Ребёнок/index.adoc#раздел[по заголовку]"));
+        // страница вне выгрузки остаётся ссылкой на Confluence — но абсолютной
+        assertTrue(parent, parent.contains("link:http://confluence/pages/viewpage.action?pageId=999[чужая]"));
+    }
+
+    @Test
+    public void viewResolvedLinkWithOwnCaptionBecomesLocalPath() throws IOException {
+        // у ac:link своя подпись, поэтому по заголовку страница не находится — выручает pageId из view
+        UrlLinkGateway gateway = new UrlLinkGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("p", (t, v) -> { });
+
+        String parent = Files.readString(tmp.resolve("Родитель").resolve("index.adoc")).replace("\r\n", "\n");
+        assertTrue(parent, parent.contains("link:Ребёнок/index.adoc[Подробнее]"));
+    }
+
+    @Test
+    public void spacesInLinkTargetAreEncoded() throws IOException {
+        // link:путь с пробелом[…] AsciiDoctor вообще не считает ссылкой — цель обрывается на пробеле
+        CrossLinkGateway gateway = new SpacedTitleGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("p", (t, v) -> { });
+
+        String parent = Files.readString(tmp.resolve("Родитель").resolve("index.adoc")).replace("\r\n", "\n");
+        assertTrue(parent, parent.contains("link:Раздел%20про%20всё/index.adoc[Раздел про всё]"));
     }
 
     /** Базовый фейк: отдаёт заданную страницу, резолвит ссылки детерминированно, вложения не качает. */
@@ -518,6 +605,106 @@ public class DispatcherPageIntegrationTest {
         public LinkResult user(String userKey) {
             userCalls.incrementAndGet();
             throw new AssertionError("user() вызван, хотя ссылка должна быть в кэше: " + userKey);
+        }
+    }
+
+    /**
+     * Фейк «Родитель → Ребёнок», где родитель ссылается на ребёнка URL'ами Confluence (по {@code pageId},
+     * по {@code /display/SPACE/Title}) и {@code ac:link}'ом со своей подписью, а также на чужую страницу.
+     */
+    private static class UrlLinkGateway extends FakeGateway {
+        UrlLinkGateway() {
+            super(null);
+        }
+
+        @Override
+        public String baseUrl() {
+            return "http://confluence";
+        }
+
+        @Override
+        public ContentPage getMainPage(String id) {
+            if (!"p".equals(id)) {
+                return new ContentPage("Ребёнок", "http://confluence/Ребёнок", "2024-01-01T00:00:00.000+0000",
+                        "<h1>Ребёнок</h1><p>тело</p>", "<p>view</p>", Map.of());
+            }
+            String content = "<h1>Родитель</h1>"
+                    + "<p><a href=\"http://confluence/pages/viewpage.action?pageId=c\">по id</a></p>"
+                    + "<p><a href=\"/display/DOC/%D0%A0%D0%B5%D0%B1%D1%91%D0%BD%D0%BE%D0%BA#раздел\">"
+                    + "по заголовку</a></p>"
+                    + "<p><a href=\"/pages/viewpage.action?pageId=999\">чужая</a></p>"
+                    + "<p><ac:link><ri:page ri:content-title=\"Ребёнок\"/>"
+                    + "<ac:plain-text-link-body>Подробнее</ac:plain-text-link-body></ac:link></p>";
+            String view = "<p><a href=\"/pages/viewpage.action?pageId=c\">Подробнее</a></p>";
+            return new ContentPage("Родитель", "http://confluence/Родитель", "2024-01-01T00:00:00.000+0000",
+                    content, view, Map.of());
+        }
+
+        @Override
+        public List<ConfluenceGateway.PageRef> childPages(String id) {
+            return "p".equals(id) ? List.of(new ConfluenceGateway.PageRef("c", "Ребёнок")) : List.of();
+        }
+
+        @Override
+        public List<String> getChildPageIds(String id) {
+            return childPages(id).stream().map(ConfluenceGateway.PageRef::id).toList();
+        }
+    }
+
+    /** Дерево «Родитель → Раздел про всё»: в заголовке дочерней страницы пробелы. */
+    private static class SpacedTitleGateway extends CrossLinkGateway {
+        @Override
+        public ContentPage getMainPage(String id) {
+            String content = "p".equals(id)
+                    ? "<h1>Родитель</h1><p><ac:link><ri:page ri:content-title=\"Раздел про всё\"/></ac:link></p>"
+                    : "<h1>Раздел про всё</h1><p>тело</p>";
+            String title = "p".equals(id) ? "Родитель" : "Раздел про всё";
+            return new ContentPage(title, "http://confluence/" + title, "2024-01-01T00:00:00.000+0000",
+                    content, "<p>view</p>", Map.of());
+        }
+
+        @Override
+        public List<ConfluenceGateway.PageRef> childPages(String id) {
+            return "p".equals(id) ? List.of(new ConfluenceGateway.PageRef("c", "Раздел про всё")) : List.of();
+        }
+    }
+
+    /** Фейк, у которого поиск ничего не находит — страница удалена/переименована/нет прав. */
+    private static class NotFoundGateway extends FakeGateway {
+        NotFoundGateway(ContentPage page) {
+            super(page);
+        }
+
+        @Override
+        public List<LinkResult> search(String title, String key) {
+            return List.of();
+        }
+    }
+
+    /** Фейк с известным базовым URL — для достройки относительных ссылок из view. */
+    private static class HostedGateway extends FakeGateway {
+        HostedGateway(ContentPage page) {
+            super(page);
+        }
+
+        @Override
+        public String baseUrl() {
+            return "http://confluence";
+        }
+    }
+
+    /** Фейк, запоминающий, какие вложения запросили на скачивание. */
+    private static class RecordingGateway extends FakeGateway {
+        final List<LinkResult> loaded = new ArrayList<>();
+
+        RecordingGateway(ContentPage page) {
+            super(page);
+        }
+
+        @Override
+        public void loadAttach(Collection<LinkResult> values, Path attachmentFolder, Consumer<String> progress) {
+            super.loadAttach(values, attachmentFolder, progress);
+            loaded.addAll(values);
         }
     }
 

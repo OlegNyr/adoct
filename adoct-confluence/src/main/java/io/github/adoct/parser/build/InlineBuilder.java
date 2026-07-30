@@ -7,6 +7,8 @@ import org.jsoup.nodes.TextNode;
 import io.github.adoct.parser.color.ColorParser;
 import io.github.adoct.parser.ast.Inline;
 import io.github.adoct.parser.build.macro.StatusMacro;
+import io.github.adoct.parser.model.LocalPages;
+import io.github.adoct.parser.model.MetadataKey;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -55,6 +57,16 @@ public final class InlineBuilder {
         return out;
     }
 
+    /**
+     * Адрес «сырой» ссылки {@code <a href>}: если она ведёт на страницу, которая тоже выгружается —
+     * относительный путь к её файлу, иначе — абсолютный URL Confluence.
+     */
+    private static String href(Node node, BuildContext ctx) {
+        String href = node.attr("href");
+        Object localPages = ctx.metadata().get(MetadataKey.LOCAL_PAGES);
+        return localPages instanceof LocalPages pages ? pages.href(href) : href;
+    }
+
     private void add(List<Inline> out, Node node, BuildContext ctx) {
         String name = node.nodeName();
         switch (name.toLowerCase()) {
@@ -76,7 +88,7 @@ public final class InlineBuilder {
             case "u" -> out.add(new Inline.Underline(children(node, ctx)));
             case "code", "tt" -> out.add(new Inline.Mono(children(node, ctx)));
             case "strong", "b" -> out.add(new Inline.Bold(children(node, ctx)));
-            case "a" -> out.add(new Inline.Link(node.attr("href"), children(node, ctx)));
+            case "a" -> out.add(new Inline.Link(href(node, ctx), children(node, ctx)));
             case "br" -> out.add(new Inline.LineBreak());
             case "ac:link" -> out.addAll(LinkRenderer.render((Element) node, ctx.metadata()));
             case "ac:image" -> out.add(ImageRenderer.acImage((Element) node, ((Element) node).text().trim()));

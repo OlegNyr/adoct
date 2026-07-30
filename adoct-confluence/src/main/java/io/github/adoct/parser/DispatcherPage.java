@@ -14,13 +14,14 @@ import io.github.adoct.parser.model.LinksAttachment;
 import io.github.adoct.parser.model.LinksPage;
 import io.github.adoct.parser.model.LinksUser;
 import io.github.adoct.parser.model.LinksValue;
+import io.github.adoct.parser.model.LocalPages;
 import io.github.adoct.parser.model.MetadataKey;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -75,6 +76,8 @@ public class DispatcherPage {
 
     /** Карта поддерева: заголовок страницы → её папка относительно корня выгрузки ({@link #basePath}). */
     private final Map<String, Path> pageFolders = new HashMap<>();
+    /** То же поддерево, но по id страницы — ссылки в теле чаще всего идут именно по {@code pageId}. */
+    private final Map<String, Path> pageIdFolders = new HashMap<>();
     /** Корневые страницы, загруженные в пред-проходе для карты дерева — переиспользуются в export. */
     private final Map<String, ContentPage> prefetched = new HashMap<>();
 
@@ -120,6 +123,7 @@ public class DispatcherPage {
      */
     private void buildSiteMap(List<String> rootIds) {
         pageFolders.clear();
+        pageIdFolders.clear();
         prefetched.clear();
         Set<String> visited = new HashSet<>();
         for (String rootId : rootIds) {
@@ -127,6 +131,7 @@ public class DispatcherPage {
             prefetched.put(rootId, root);
             Path rootFolder = Path.of(sanitizeFolderName(root.title()));
             pageFolders.put(root.title(), rootFolder);
+            pageIdFolders.put(rootId, rootFolder);
             walkSiteMap(rootId, rootFolder, visited);
         }
     }
@@ -141,6 +146,7 @@ public class DispatcherPage {
             }
             Path childFolder = folder.resolve(sanitizeFolderName(ref.title()));
             pageFolders.putIfAbsent(ref.title(), childFolder);
+            pageIdFolders.putIfAbsent(ref.id(), childFolder);
             walkSiteMap(ref.id(), childFolder, visited);
         }
     }
@@ -201,7 +207,7 @@ public class DispatcherPage {
                 case LinksPage page -> {
                     String url = resolveView.get(page.title());
                     if (url != null) {
-                        out.put(link, new LinkResult(page.title(), url));
+                        out.put(link, new LinkResult(page.title(), pageUrl(url, null)));
                     }
                 }
                 case LinksAttachment att -> {
@@ -252,7 +258,8 @@ public class DispatcherPage {
         Files.createDirectories(attachmentFolder);
 
         if (includeAttachments) {
-            Collection<LinkResult> countAttache = mainPage.attachment().values();
+            List<LinkResult> countAttache = new ArrayList<>(mainPage.attachment().values());
+            countAttache.addAll(foreignImages(converter, mainPage.attachment()));
             client.loadAttach(countAttache, attachmentFolder,
                     filename ->
                             progressCallback.next("Загружаем вложение %s".formatted(filename),
@@ -283,6 +290,7 @@ public class DispatcherPage {
 
         Map<MetadataKey, Object> metadata = new HashMap<>();
         metadata.put(MetadataKey.LINKS, linksResolvers);
+        metadata.put(MetadataKey.LOCAL_PAGES, localPages(currentFolder));
         metadata.put(MetadataKey.TITLE, mainPage.title());
         metadata.put(MetadataKey.PAGE_ID, id);
         metadata.put(MetadataKey.URL, mainPage.url());
@@ -310,6 +318,44 @@ public class DispatcherPage {
 
         exportChildren(children, destination, progressCallback);
         return mainPage.title();
+    }
+
+    /**
+     * Картинки, вставленные с другой страницы ({@code <ri:attachment><ri:page …/></ri:attachment>}): в
+     * карте вложений текущей страницы их нет, поэтому в {@code attache/} они не попадали и ссылка в
+     * {@code .adoc} вела в никуда. URL берём из rendered view (Confluence уже отрезолвил его там) и
+     * докачиваем такие файлы вместе со своими вложениями.
+     */
+    private List<LinkResult> foreignImages(ConvertStorageToAdoc converter, Map<String, LinkResult> own) {
+        Map<String, String> sources = converter.imageSources();
+        List<LinkResult> res = new ArrayList<>();
+        for (String filename : converter.imageAttachments()) {
+            if (own.containsKey(filename)) {
+                continue;
+            }
+            String src = downloadPath(sources.get(filename));
+            if (src == null) {
+                log.warn("Картинка {} не найдена ни во вложениях страницы, ни в rendered view", filename);
+                continue;
+            }
+            res.add(new LinkResult(filename, src));
+        }
+        return res;
+    }
+
+    /**
+     * Приводит ссылку из view к виду, который ждёт {@code loadAttach} — путь относительно хоста
+     * Confluence. Чужой хост скачать этим клиентом нельзя, поэтому такие ссылки отбрасываем.
+     */
+    private String downloadPath(String src) {
+        if (src == null) {
+            return null;
+        }
+        String base = client.baseUrl();
+        if (!base.isEmpty() && src.startsWith(base)) {
+            return src.substring(base.length());
+        }
+        return src.startsWith("/") ? src : null;
     }
 
     private static void putIfNotNull(Map<MetadataKey, Object> metadata, MetadataKey key, Object value) {
@@ -403,11 +449,13 @@ public class DispatcherPage {
                 log.warn("link ignore load exist {}", link);
                 continue;
             }
+            // нерезолвленную ссылку в карту не кладём: writer отрисует её плейсхолдером, а не NPE-ит
             switch (link) {
-                case LinksUser user -> linksResolvers.put(link, client.user(user.userKey()));
-                case LinksPage page -> linksResolvers.put(link, resolveLink(page, resolveView, currentFolder));
-                case LinksAttachment pageAttachment ->
-                        linksResolvers.put(link, attachment.get(pageAttachment.filename()));
+                case LinksUser user -> putIfResolved(linksResolvers, link, client.user(user.userKey()));
+                case LinksPage page -> putIfResolved(linksResolvers, link,
+                        resolveLink(page, resolveView, currentFolder));
+                case LinksAttachment pageAttachment -> putIfResolved(linksResolvers, link,
+                        attachment.get(pageAttachment.filename()));
                 default -> throw new IllegalStateException("Unexpected value: " + link);
             }
             if (progress != null) {
@@ -417,17 +465,54 @@ public class DispatcherPage {
         return linksResolvers;
     }
 
+    private static void putIfResolved(Map<LinksValue, LinkResult> links, LinksValue key, LinkResult value) {
+        if (value != null) {
+            links.put(key, value);
+        }
+    }
+
+    /**
+     * Резолв ссылки на страницу: локальный путь внутри выгрузки → URL из rendered view → поиск по
+     * заголовку. {@code null}, если страницу найти не удалось (удалена, переименована, нет прав) —
+     * тогда ссылка остаётся нерезолвленной, но экспорт не падает.
+     */
     private LinkResult resolveLink(LinksPage page, Map<String, String> resolveView, Path currentFolder) {
         LinkResult local = localLink(page.title(), currentFolder);
         if (local != null) {
             return local;
         }
         String url = resolveView.get(page.title());
-        if (url == null) {
-            return client.search(page.title(), page.space()).getFirst();
-        } else {
-            return new LinkResult(page.title(), url);
+        if (url != null) {
+            return new LinkResult(page.title(), pageUrl(url, currentFolder));
         }
+        List<LinkResult> found = client.search(page.title(), page.space());
+        if (found.isEmpty()) {
+            log.warn("Страница «{}» (space={}) не найдена — ссылка остаётся нерезолвленной",
+                    page.title(), page.space());
+            return null;
+        }
+        LinkResult hit = found.getFirst();
+        return new LinkResult(hit.title(), pageUrl(hit.url(), currentFolder));
+    }
+
+    /**
+     * Адрес найденной страницы: локальный путь, если она тоже входит в выгрузку, иначе — абсолютный
+     * URL Confluence. По заголовку страница могла не найтись (у ссылки своя подпись), поэтому по URL
+     * пробуем ещё раз — там есть {@code pageId}.
+     */
+    private String pageUrl(String url, Path currentFolder) {
+        return localPages(currentFolder).href(url);
+    }
+
+    /**
+     * Карта страниц выгрузки для страницы в папке {@code currentFolder}. Если локальный резолв выключен
+     * (или папка неизвестна — конвертация в память), карта пуста, но базовый URL остаётся: ссылки всё
+     * равно нужно достраивать до абсолютных.
+     */
+    private LocalPages localPages(Path currentFolder) {
+        boolean local = crossPageLinks && currentFolder != null;
+        return new LocalPages(local ? pageIdFolders : Map.of(), local ? pageFolders : Map.of(),
+                currentFolder, format.indexFileName(), client.baseUrl());
     }
 
     /**
@@ -446,8 +531,7 @@ public class DispatcherPage {
         if (targetFolder == null) {
             return null;
         }
-        String rel = currentFolder.relativize(targetFolder).resolve(format.indexFileName())
-                .toString().replace('\\', '/');
+        String rel = localPages(currentFolder).relativeIndex(targetFolder);
         return new LinkResult(pageTitle, anchor == null ? rel : rel + "#" + anchor);
     }
 

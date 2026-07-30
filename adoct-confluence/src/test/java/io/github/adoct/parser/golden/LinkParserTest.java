@@ -29,6 +29,7 @@ public class LinkParserTest extends AbstractConvertParserTest {
     public void unresolvedLinkFallsBackToMock() throws IOException {
         String out = convert(
                 "<p><ac:link><ri:user ri:userkey=\"u1\"/></ac:link></p>");
-        assertTrue(out.contains("link:http://mock["));
+        // подпись плейсхолдера — читаемый ключ, а не toString() записи LinksUser[userKey=u1]
+        assertTrue(out, out.contains("link:http://mock[u1]"));
     }
 }

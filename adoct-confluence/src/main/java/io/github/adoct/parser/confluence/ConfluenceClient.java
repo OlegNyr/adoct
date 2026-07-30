@@ -302,6 +302,11 @@ public class ConfluenceClient implements ConfluenceGateway {
         return exact.isEmpty() ? searchCql(cqlTitle(title, "~", key)) : exact;
     }
 
+    @Override
+    public String baseUrl() {
+        return host;
+    }
+
     /**
      * Поиск по заголовку и тексту: каскад {@code title = } → {@code title ~ } → {@code text ~ }.
      * Возвращает первую непустую выдачу (заголовочные совпадения приоритетнее текстовых). Подходит
@@ -370,8 +375,11 @@ public class ConfluenceClient implements ConfluenceGateway {
                 .build();
         log.debug("Confluence search: {}", cql);
         String body = doRequestAndFailIfNot20x(httpRequest);
+        if (body == null) {
+            return List.of();
+        }
         ConfluenceSearchResult searchResult = ObjectMapperExt.INSTANT.readValue(body, ConfluenceSearchResult.class);
-        return searchResult.getResults().stream()
+        return Optional.ofNullable(searchResult.getResults()).orElse(List.of()).stream()
                 .map(r -> Optional.of(r)
                         .map(ResultDto::getLinks)
                         .map(LinksDto::getWebui)
@@ -432,6 +440,11 @@ public class ConfluenceClient implements ConfluenceGateway {
                 log.warn("Ignore load {} file exist", file);
             }
             byte[] bytes = downLoad(value.url());
+            if (bytes == null) {
+                // нет прав/файл удалён — пропускаем, но экспорт не роняем
+                log.warn("Не удалось скачать вложение {} ({})", value.title(), value.url());
+                continue;
+            }
             Files.write(file, bytes);
             if (progress != null) {
                 progress.accept(value.title());

@@ -96,7 +96,8 @@ public final class MarkdownWriter implements BlockWriter {
     }
 
     private String image(String target, String alt, String width, String height, String caption) {
-        target = imagePath(target);
+        // в markdown адрес картинки, как и ссылки, не может содержать пробел — а в именах вложений он частый
+        target = LinkTarget.encode(imagePath(target));
         String text = notBlank(caption) ? caption : (alt == null ? "" : alt);
         String img;
         if (notBlank(width) || notBlank(height)) {
@@ -316,7 +317,7 @@ public final class MarkdownWriter implements BlockWriter {
         if (label.isEmpty()) {
             return "<" + l.url() + ">";
         }
-        return "[%s](%s)".formatted(label.replace("]", "\\]"), l.url());
+        return "[%s](%s)".formatted(label.replace("]", "\\]"), LinkTarget.encode(l.url()));
     }
 
     /** Текст без markdown-разметки (для содержимого inline-кода). */

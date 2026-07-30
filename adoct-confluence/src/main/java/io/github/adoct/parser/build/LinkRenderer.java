@@ -68,7 +68,7 @@ public final class LinkRenderer {
     private static Inline link(Map<LinksValue, LinkResult> links, LinksValue key) {
         LinkResult res = links.get(key);
         if (res == null) {
-            return new Inline.Link("http://mock", List.of(new Inline.Text(key.toString())));
+            return new Inline.Link("http://mock", List.of(new Inline.Text(key.label())));
         }
         return new Inline.Link(res.url(), List.of(new Inline.Text(res.title())));
     }
@@ -77,7 +77,7 @@ public final class LinkRenderer {
                                      Map<MetadataKey, Object> metadata) {
         LinkResult res = links.get(key);
         if (res == null) {
-            return new Inline.Link("http://mock", List.of(new Inline.Text(key.toString())));
+            return new Inline.Link("http://mock", List.of(new Inline.Text(key.label())));
         }
         String url = "%s/%s".formatted(metadata.get(MetadataKey.ATTACH_FOLDER_NAME), res.title());
         return new Inline.Link(url, List.of(new Inline.Text(res.title())));

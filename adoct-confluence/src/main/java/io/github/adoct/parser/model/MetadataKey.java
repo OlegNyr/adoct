@@ -37,7 +37,12 @@ public enum MetadataKey {
          */
         VERSION("version"),
         /** In-memory конвертация: не писать файлы — длинные блоки инлайнить, drawio отдавать ссылкой. */
-        IN_MEMORY("inMemory");
+        IN_MEMORY("inMemory"),
+        /**
+         * Карта страниц выгрузки ({@link LocalPages}) — чтобы ссылку на страницу, которая тоже
+         * выгружается, заменить с URL Confluence на относительный путь к её файлу.
+         */
+        LOCAL_PAGES("localPages");
     private final String  key;
 
 }

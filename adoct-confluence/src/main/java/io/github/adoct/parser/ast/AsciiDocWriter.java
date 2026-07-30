@@ -228,7 +228,7 @@ public final class AsciiDocWriter implements BlockWriter {
             case Inline.Underline u -> "[.underline]##" + inline(u.children()) + "##";
             case Inline.Mono m -> "`" + inline(m.children()) + "`";
             case Inline.Colored c -> "[." + c.color() + "]##" + inline(c.children()) + "##";
-            case Inline.Link l -> "link:" + l.url() + "[" + linkLabel(l.label()) + "]";
+            case Inline.Link l -> "link:" + LinkTarget.encode(l.url()) + "[" + linkLabel(l.label()) + "]";
             case Inline.CrossRef x -> "<<%s, %s>>".formatted(x.anchor(), x.text());
             case Inline.Image i -> image("image:", i.target(), i.alt(), i.width(), i.height(), null);
             case Inline.Status s -> "[.%s]#%s#".formatted(s.colour() != null

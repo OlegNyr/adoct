@@ -39,6 +39,15 @@ public interface ConfluenceGateway {
     /** Ищет страницу по заголовку (и опционально ключу пространства). */
     List<LinkResult> search(String title, String key);
 
+    /**
+     * Базовый URL Confluence ({@code https://host}) — чтобы достроить до абсолютных ссылки, которые
+     * rendered view отдаёт относительными ({@code /pages/viewpage.action?pageId=…}). По умолчанию
+     * пусто: реализация без сети такие ссылки не достраивает.
+     */
+    default String baseUrl() {
+        return "";
+    }
+
     /** Резолвит пользователя по ключу в ссылку на его профиль. */
     LinkResult user(String userKey);
 

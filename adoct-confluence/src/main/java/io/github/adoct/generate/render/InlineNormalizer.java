@@ -6,6 +6,7 @@ import org.jsoup.nodes.Entities;
 import io.github.adoct.generate.asciidoc.AdocPageTitle;
 import io.github.adoct.generate.asciidoc.AnchorIndex;
 
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -172,7 +173,7 @@ final class InlineNormalizer {
             return fromBase;
         }
         if (rootDir != null) {
-            Path fromRoot = rootDir.resolve(path).normalize();
+            Path fromRoot = rootDir.resolve(decode(path)).normalize();
             if (Files.isRegularFile(fromRoot)) {
                 return fromRoot;
             }
@@ -242,8 +243,30 @@ final class InlineNormalizer {
     }
 
     private Path resolveDoc(String path) {
+        Path p = at(path);
+        if (Files.isRegularFile(p)) {
+            return p;
+        }
+        // AsciiDoctor кодирует в href/src спецсимволы (пробел → %20), а в имени файла они настоящие
+        String decoded = decode(path);
+        return decoded.equals(path) ? p : at(decoded);
+    }
+
+    private Path at(String path) {
         Path p = Path.of(path);
         return baseDir == null ? p : baseDir.resolve(p).normalize();
+    }
+
+    /** Percent-decode пути; битую кодировку (одиночный {@code %}) оставляем как есть. */
+    private static String decode(String path) {
+        if (path.indexOf('%') < 0) {
+            return path;
+        }
+        try {
+            return URLDecoder.decode(path.replace("+", "%2B"), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            return path;
+        }
     }
 
     /** {@link Matcher#replaceAll(Function)} с безопасным экранированием замены. */
