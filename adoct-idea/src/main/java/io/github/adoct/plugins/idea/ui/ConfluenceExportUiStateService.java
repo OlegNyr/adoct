@@ -5,6 +5,7 @@ import com.intellij.openapi.components.Service;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.components.StoragePathMacros;
+import io.github.adoct.plugins.idea.service.ExportOptions;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -54,6 +55,10 @@ public final class ConfluenceExportUiStateService implements PersistentStateComp
         state.includeAttachments = includeAttachments;
     }
 
+    public void setOnlyUsedAttachments(boolean onlyUsedAttachments) {
+        state.onlyUsedAttachments = onlyUsedAttachments;
+    }
+
     public void setFormat(String format) {
         state.format = format;
     }
@@ -64,6 +69,10 @@ public final class ConfluenceExportUiStateService implements PersistentStateComp
 
     public void setExportSpace(boolean exportSpace) {
         state.exportSpace = exportSpace;
+    }
+
+    public void setExportThreads(int exportThreads) {
+        state.exportThreads = ExportOptions.clampThreads(exportThreads);
     }
 
     public String getLastUrl() {
@@ -94,6 +103,10 @@ public final class ConfluenceExportUiStateService implements PersistentStateComp
         return state.includeAttachments;
     }
 
+    public boolean isOnlyUsedAttachments() {
+        return state.onlyUsedAttachments;
+    }
+
     public String getFormat() {
         return state.format == null ? "adoc" : state.format;
     }
@@ -106,6 +119,11 @@ public final class ConfluenceExportUiStateService implements PersistentStateComp
         return state.exportSpace;
     }
 
+    /** Степень параллелизма выгрузки; сохранённое значение приводится в допустимый диапазон. */
+    public int getExportThreads() {
+        return ExportOptions.clampThreads(state.exportThreads);
+    }
+
     public static final class StateData {
         public String lastUrl = "";
         public String lastDirectory = "";
@@ -114,8 +132,10 @@ public final class ConfluenceExportUiStateService implements PersistentStateComp
         public boolean debug = false;
         public boolean includeChildren = true;
         public boolean includeAttachments = true;
+        public boolean onlyUsedAttachments = false;
         public String format = "adoc";
         public boolean skipUnchanged = true;
         public boolean exportSpace = false;
+        public int exportThreads = ExportOptions.DEFAULT_THREADS;
     }
 }

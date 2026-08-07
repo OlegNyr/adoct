@@ -28,6 +28,8 @@ public final class ConfluenceExportTreeToAdoc implements Tool {
                 .str("targetDir", "Абсолютный путь папки назначения", true)
                 .bool("includeChildren", "Выгружать дерево дочерних (по умолчанию true)", false)
                 .bool("includeAttachments", "Скачивать вложения (по умолчанию true)", false)
+                .bool("onlyUsedAttachments",
+                        "Качать только вложения, на которые ссылается тело страницы (по умолчанию false)", false)
                 .bool("exportColors", "Сохранять оригинальные цвета (по умолчанию false)", false)
                 .bool("debug", "Сохранять папку source/ (по умолчанию false)", false)
                 .str("format", "Формат вывода: adoc (по умолчанию) или md (Markdown)", false)
@@ -43,6 +45,7 @@ public final class ConfluenceExportTreeToAdoc implements Tool {
                     ObjectMapperExt.INSTANT);
             dp.setIncludeChildren(c.optBool(args, "includeChildren", true));
             dp.setIncludeAttachments(c.optBool(args, "includeAttachments", true));
+            dp.setOnlyUsedAttachments(c.optBool(args, "onlyUsedAttachments", false));
             dp.setExportColors(c.optBool(args, "exportColors", false));
             dp.setDebug(c.optBool(args, "debug", false));
             dp.setFormat(OutputFormat.from(c.text(args, "format")));

@@ -40,8 +40,12 @@ under *Settings → Tools → AsciiDocTools*.
   (each child lands in its own subfolder).
 - Offline conversion of an exported HTML "storage" document.
 - Downloads attachments/images, resolves internal Confluence links (page, user, attachment).
+  *Only attachments referenced by the page* limits downloads to files the body actually links to or
+  embeds, skipping leftovers from older revisions.
 - Translates Confluence macros to AsciiDoc, preserves colors and styles.
 - Splits large documents (> 700 lines) into multiple files on level‑2 headings.
+- Exports pages in parallel (*Parallel pages*, 4 by default); set it to 1 for sequential export or
+  raise it when the Confluence server can take the load.
 
 ### AsciiDoc → Confluence (publish / round-trip)
 - Publishes a single `.adoc` or a whole folder tree, mirroring the folder structure as a Confluence

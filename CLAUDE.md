@@ -38,10 +38,13 @@ The engine (`:adoct-confluence`) is fully decoupled from IntelliJ APIs so it can
 ### Conversion flow (export)
 
 `DispatcherPage.generate(pageId, progress)` orchestrates a live Confluence pull, recursing into the child-page tree (each page lands in its own subfolder `<parent>/<child title>/`):
-1. `ConfluenceClient` fetches the page (`getMainPage`) and downloads attachments into `<dest>/attache/` (skipped when `includeAttachments` is off).
+0. A **pre-pass** (`buildSiteMap`) pulls the whole tree in one paginated batch — `spaceTree`/`subtree` (`expand=ancestors,version`) — building title→folder, id→folder and parent→children maps. It falls back to the old page-by-page `childPages` walk if the batch call fails. `export` reuses these maps instead of re-requesting children, and the known `version` lets an unchanged page be skipped **without fetching its body** (`skipUnchangedWithoutLoading`).
+1. `ConfluenceClient` fetches the page (`getMainPage`, one request incl. `metadata.labels`) and downloads attachments into `<dest>/attache/` (skipped when `includeAttachments` is off; limited to files the body references when `onlyUsedAttachments` is on — see `ConvertStorageToAdoc.usedAttachments()`).
 2. Page id is resolved from the URL — both `…?pageId=NNN` and the "human" `/display/SPACE/Title` form (resolved to an id via `findPageId`). The same resolution backs `:confluency-id:` values in `.adoc` (number, or a URL that is resolved and cached back to a number).
 3. `ConvertStorageToAdoc.convert(metadata, attachmentDir)` produces the AsciiDoc; the page id is written into the header as `:confluency-id:` so publish can round-trip.
 4. Raw inputs under `<dest>/source/` (`body.storage.html`, `view.storage.html`, `content.json`, `links.json` — `links.json` is also a resolved-link **cache**) are written **only in debug mode**. Empty `attache/` and `files/` folders are removed.
+
+Pages are exported **in parallel** (`exportThreads`, default 4; 1 = sequential). A page's own work and its children's traversal are deliberately separate (`exportSelf` → `PageExport` → `exportChildren`) so the parallelism slot is released before waiting on children. Threads are virtual — the traversal is recursive and a parent waits for its children. `ConfluenceClient` holds one pooled `CloseableHttpClient` and is `Closeable`: whoever creates it must close it.
 
 ### The parser engine (the core)
 

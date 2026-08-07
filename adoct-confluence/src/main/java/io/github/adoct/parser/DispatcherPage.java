@@ -62,6 +62,16 @@ public class DispatcherPage {
     /** Скачивать ли вложения (файлы, картинки) в {@code attache/}. По умолчанию да. */
     @Setter
     private boolean includeAttachments = true;
+    /**
+     * Качать только те вложения, на которые тело страницы реально ссылается (см.
+     * {@link ConvertStorageToAdoc#usedAttachments()}), а не все вложения страницы. По умолчанию
+     * выключено — прежнее поведение.
+     * <p>
+     * Работает только при включённом {@link #includeAttachments}: если вложения не качаются вовсе,
+     * фильтровать нечего.
+     */
+    @Setter
+    private boolean onlyUsedAttachments;
     /** Целевой формат экспорта (AsciiDoc по умолчанию). */
     @Setter
     private OutputFormat format = OutputFormat.ADOC;
@@ -489,7 +499,8 @@ public class DispatcherPage {
         Files.createDirectories(attachmentFolder);
 
         if (includeAttachments) {
-            List<LinkResult> countAttache = new ArrayList<>(mainPage.attachment().values());
+            List<LinkResult> countAttache = ownAttachments(converter, mainPage.attachment());
+            // Картинки с чужих страниц по определению используются — фильтр к ним не применяем.
             countAttache.addAll(foreignImages(converter, mainPage.attachment()));
             client.loadAttach(countAttache, attachmentFolder,
                     filename ->
@@ -551,6 +562,31 @@ public class DispatcherPage {
         deleteIfEmpty(attachmentFolder);
 
         return new PageExport(mainPage.title(), destination, children);
+    }
+
+    /**
+     * Вложения самой страницы, которые нужно скачать: все либо, при {@link #onlyUsedAttachments},
+     * только те, на которые ссылается тело.
+     * <p>
+     * Фильтр сопоставляет по имени файла: вложение, которого нет в теле (старая версия документа,
+     * забытый черновик, авто-превью), не качается. Ссылка на файл, которого нет во вложениях,
+     * фильтром не создаётся — такой случай разбирает {@link #foreignImages}.
+     */
+    private List<LinkResult> ownAttachments(ConvertStorageToAdoc converter, Map<String, LinkResult> own) {
+        if (!onlyUsedAttachments) {
+            return new ArrayList<>(own.values());
+        }
+        Set<String> used = converter.usedAttachments();
+        List<LinkResult> res = new ArrayList<>();
+        for (Map.Entry<String, LinkResult> entry : own.entrySet()) {
+            if (used.contains(entry.getKey())) {
+                res.add(entry.getValue());
+            }
+        }
+        if (res.size() < own.size()) {
+            log.debug("Вложений на странице {}, используется {} — остальные не качаем", own.size(), res.size());
+        }
+        return res;
     }
 
     /**

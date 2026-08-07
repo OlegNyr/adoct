@@ -168,6 +168,75 @@ public class ConvertStorageToAdoc {
     }
 
     /**
+     * Имена вложений, на которые тело страницы реально ссылается, — чтобы не качать всё подряд.
+     *
+     * <p>Собирается сплошным сканом {@code ri:attachment} по всему документу, а не перечислением
+     * контекстов ({@code ac:image}, {@code ac:link}, …): так автоматически попадают и параметры
+     * макросов, которых нет в реестре ({@code view-file}, {@code multimedia}, {@code gallery} и
+     * прочие плагинные) — их тело разворачивается как есть, и ссылка на файл в выводе остаётся.
+     *
+     * <p>Для {@code drawio}/{@code inc-drawio} добавляются <b>все</b> файлы, среди которых
+     * {@code DrawioRenderer} ищет исходник диаграммы: имя без расширения, {@code .png}/{@code .svg}
+     * рендеры и уже готовые комбинированные {@code .drawio.png}/{@code .drawio.svg}.
+     *
+     * <p>Имя вложения здесь — то, что написано в storage. Совпадает ли оно с реальным вложением
+     * страницы, решает вызывающий: набор используется как фильтр, а не как список для загрузки.
+     */
+    public Set<String> usedAttachments() {
+        Set<String> res = new HashSet<>();
+        for (Element attachment : document.getElementsByTag("ri:attachment")) {
+            addIfNotBlank(res, attachment.attr("ri:filename"));
+        }
+        // <img src> встречается в импортированном/вставленном HTML — файл берётся из папки вложений
+        for (Element img : document.getElementsByTag("img")) {
+            addIfNotBlank(res, fileNameOf(img.attr("src")));
+        }
+        for (Element macro : document.getElementsByTag("ac:structured-macro")) {
+            String name = macro.attr("ac:name");
+            if (!"drawio".equals(name) && !"inc-drawio".equals(name)) {
+                continue;
+            }
+            String diagram = macroParameter(macro, "diagramName");
+            if (StringUtils.isBlank(diagram)) {
+                continue;
+            }
+            for (String candidate : DRAWIO_SUFFIXES) {
+                res.add(diagram + candidate);
+            }
+        }
+        return res;
+    }
+
+    /** Расширения, среди которых {@code DrawioRenderer} ищет исходник диаграммы (пустое — файл без расширения). */
+    private static final String[] DRAWIO_SUFFIXES = {"", ".png", ".svg", ".drawio.png", ".drawio.svg"};
+
+    /** Значение параметра макроса {@code <ac:parameter ac:name="…">} — как его читает {@code MacroTag}. */
+    private static String macroParameter(Element macro, String name) {
+        return macro.children().stream()
+                .filter(e -> "ac:parameter".equals(e.nodeName()) && name.equals(e.attr("ac:name")))
+                .map(Element::html)
+                .findFirst()
+                .orElse(null);
+    }
+
+    /** Имя файла из пути/URL картинки; {@code null}, если выделить не удалось. */
+    private static String fileNameOf(String src) {
+        if (StringUtils.isBlank(src)) {
+            return null;
+        }
+        int slash = Math.max(src.lastIndexOf('/'), src.lastIndexOf('\\'));
+        String name = slash >= 0 ? src.substring(slash + 1) : src;
+        int query = name.indexOf('?');
+        return query >= 0 ? name.substring(0, query) : name;
+    }
+
+    private static void addIfNotBlank(Set<String> target, String value) {
+        if (StringUtils.isNotBlank(value)) {
+            target.add(value);
+        }
+    }
+
+    /**
      * Карта {@code имя файла картинки → ссылка на скачивание} из rendered view. Confluence уже
      * отрезолвил в нём вложения любых страниц, поэтому это единственный источник URL для картинок,
      * лежащих не на текущей странице. Ссылки — как их отдаёт Confluence (обычно относительные от хоста).

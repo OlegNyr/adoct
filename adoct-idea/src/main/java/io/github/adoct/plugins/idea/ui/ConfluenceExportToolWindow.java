@@ -15,6 +15,7 @@ import com.intellij.ui.components.JBTextField;
 import org.jetbrains.annotations.NotNull;
 import io.github.adoct.plugins.idea.service.BugReportService;
 import io.github.adoct.plugins.idea.service.ConvertDocsUrlToAdoc;
+import io.github.adoct.plugins.idea.service.ExportOptions;
 import io.github.adoct.parser.OutputFormat;
 
 import javax.swing.*;
@@ -38,11 +39,13 @@ public class ConfluenceExportToolWindow {
     private JCheckBox exportColorsCheckBox;
     private JCheckBox includeChildrenCheckBox;
     private JCheckBox includeAttachmentsCheckBox;
+    private JCheckBox onlyUsedAttachmentsCheckBox;
     private JCheckBox debugCheckBox;
     private JCheckBox reportOnErrorCheckBox;
     private JCheckBox skipUnchangedCheckBox;
     private JCheckBox exportSpaceCheckBox;
     private JComboBox<String> formatComboBox;
+    private JSpinner exportThreadsSpinner;
     private JButton exportButton;
 
     /** Порядок должен совпадать с {@link #FORMAT_VALUES}: индекс combo → формат. */
@@ -105,36 +108,46 @@ public class ConfluenceExportToolWindow {
         gbc.weightx = 1.0;
         contentPanel.add(includeAttachmentsCheckBox, gbc);
 
-        debugCheckBox = new JCheckBox(message("toolwindow.ConfluenceExport.Debug.caption"));
+        onlyUsedAttachmentsCheckBox =
+                new JCheckBox(message("toolwindow.ConfluenceExport.OnlyUsedAttachments.caption"));
+        onlyUsedAttachmentsCheckBox.setToolTipText(
+                message("toolwindow.ConfluenceExport.OnlyUsedAttachments.tooltip"));
         gbc.gridx = 0;
         gbc.gridy = 5;
+        gbc.gridwidth = 2;
+        gbc.weightx = 1.0;
+        contentPanel.add(onlyUsedAttachmentsCheckBox, gbc);
+
+        debugCheckBox = new JCheckBox(message("toolwindow.ConfluenceExport.Debug.caption"));
+        gbc.gridx = 0;
+        gbc.gridy = 6;
         gbc.gridwidth = 2;
         gbc.weightx = 1.0;
         contentPanel.add(debugCheckBox, gbc);
 
         reportOnErrorCheckBox = new JCheckBox(message("toolwindow.ConfluenceExport.ReportOnError.caption"));
         gbc.gridx = 0;
-        gbc.gridy = 6;
+        gbc.gridy = 7;
         gbc.gridwidth = 2;
         gbc.weightx = 1.0;
         contentPanel.add(reportOnErrorCheckBox, gbc);
 
         skipUnchangedCheckBox = new JCheckBox(message("toolwindow.ConfluenceExport.SkipUnchanged.caption"));
         gbc.gridx = 0;
-        gbc.gridy = 7;
+        gbc.gridy = 8;
         gbc.gridwidth = 2;
         gbc.weightx = 1.0;
         contentPanel.add(skipUnchangedCheckBox, gbc);
 
         exportSpaceCheckBox = new JCheckBox(message("toolwindow.ConfluenceExport.ExportSpace.caption"));
         gbc.gridx = 0;
-        gbc.gridy = 8;
+        gbc.gridy = 9;
         gbc.gridwidth = 2;
         gbc.weightx = 1.0;
         contentPanel.add(exportSpaceCheckBox, gbc);
 
         gbc.gridx = 0;
-        gbc.gridy = 9;
+        gbc.gridy = 10;
         gbc.gridwidth = 1;
         gbc.weightx = 0.0;
         contentPanel.add(new JLabel(message("toolwindow.ConfluenceExport.Format.caption")), gbc);
@@ -144,13 +157,28 @@ public class ConfluenceExportToolWindow {
                 message("toolwindow.ConfluenceExport.Format.md")
         });
         gbc.gridx = 1;
-        gbc.gridy = 9;
+        gbc.gridy = 10;
         gbc.weightx = 1.0;
         contentPanel.add(formatComboBox, gbc);
 
+        gbc.gridx = 0;
+        gbc.gridy = 11;
+        gbc.weightx = 0.0;
+        JLabel threadsLabel = new JLabel(message("toolwindow.ConfluenceExport.ExportThreads.caption"));
+        threadsLabel.setToolTipText(message("toolwindow.ConfluenceExport.ExportThreads.tooltip"));
+        contentPanel.add(threadsLabel, gbc);
+
+        exportThreadsSpinner = new JSpinner(new SpinnerNumberModel(ExportOptions.DEFAULT_THREADS,
+                ExportOptions.MIN_THREADS, ExportOptions.MAX_THREADS, 1));
+        exportThreadsSpinner.setToolTipText(message("toolwindow.ConfluenceExport.ExportThreads.tooltip"));
+        gbc.gridx = 1;
+        gbc.gridy = 11;
+        gbc.weightx = 1.0;
+        contentPanel.add(exportThreadsSpinner, gbc);
+
         exportButton = new JButton(message("toolwindow.ConfluenceExport.Export.caption"));
         gbc.gridx = 0;
-        gbc.gridy = 10;
+        gbc.gridy = 12;
         gbc.gridwidth = 2;
         gbc.weightx = 0.0;
         gbc.fill = GridBagConstraints.NONE;
@@ -158,7 +186,7 @@ public class ConfluenceExportToolWindow {
         contentPanel.add(exportButton, gbc);
 
         gbc.gridx = 0;
-        gbc.gridy = 11;
+        gbc.gridy = 13;
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.anchor = GridBagConstraints.WEST;
@@ -187,12 +215,17 @@ public class ConfluenceExportToolWindow {
         exportDirectoryField.getTextField().getDocument().addDocumentListener(stateListener);
         exportColorsCheckBox.addActionListener(e -> persistState());
         includeChildrenCheckBox.addActionListener(e -> persistState());
-        includeAttachmentsCheckBox.addActionListener(e -> persistState());
+        includeAttachmentsCheckBox.addActionListener(e -> {
+            syncOnlyUsedAttachmentsEnabled();
+            persistState();
+        });
+        onlyUsedAttachmentsCheckBox.addActionListener(e -> persistState());
         debugCheckBox.addActionListener(e -> persistState());
         reportOnErrorCheckBox.addActionListener(e -> persistState());
         skipUnchangedCheckBox.addActionListener(e -> persistState());
         exportSpaceCheckBox.addActionListener(e -> persistState());
         formatComboBox.addActionListener(e -> persistState());
+        exportThreadsSpinner.addChangeListener(e -> persistState());
 
         exportDirectoryField.addActionListener(e -> {
             FileChooserDescriptor descriptor = FileChooserDescriptorFactory.createSingleFolderDescriptor();
@@ -209,18 +242,21 @@ public class ConfluenceExportToolWindow {
     private void exportAction() {
         String url = confluenceUrlField.getText().trim();
         String targetDirPath = exportDirectoryField.getText().trim();
-        boolean exportColors = exportColorsCheckBox.isSelected();
-        boolean includeChildren = includeChildrenCheckBox.isSelected();
-        boolean includeAttachments = includeAttachmentsCheckBox.isSelected();
-        boolean debug = debugCheckBox.isSelected();
         boolean reportOnError = reportOnErrorCheckBox.isSelected();
-        boolean skipUnchanged = skipUnchangedCheckBox.isSelected();
-        boolean exportSpace = exportSpaceCheckBox.isSelected();
-        OutputFormat format = selectedFormat();
+        ExportOptions options = new ExportOptions(
+                exportColorsCheckBox.isSelected(),
+                debugCheckBox.isSelected(),
+                includeChildrenCheckBox.isSelected(),
+                includeAttachmentsCheckBox.isSelected(),
+                onlyUsedAttachmentsCheckBox.isSelected(),
+                selectedFormat(),
+                skipUnchangedCheckBox.isSelected(),
+                exportSpaceCheckBox.isSelected(),
+                selectedThreads());
         persistState(url, targetDirPath);
 
         if (url.isEmpty()) {
-            notifyError(exportSpace ? "Please enter a Confluence space URL" : "Please enter Confluence URL");
+            notifyError(options.exportSpace() ? "Please enter a Confluence space URL" : "Please enter Confluence URL");
             return;
         }
         if (!isValidHttpUrl(url)) {
@@ -238,9 +274,7 @@ public class ConfluenceExportToolWindow {
             return;
         }
 
-        runExportInBackground(url, targetDir, exportColors, includeChildren, includeAttachments, debug, reportOnError,
-                format, skipUnchanged, exportSpace);
-
+        runExportInBackground(url, targetDir, options, reportOnError);
     }
 
     /** Формат из выпадающего списка по индексу (см. {@link #FORMAT_VALUES}). */
@@ -284,11 +318,14 @@ public class ConfluenceExportToolWindow {
         exportColorsCheckBox.setSelected(uiStateService.isExportColors());
         includeChildrenCheckBox.setSelected(uiStateService.isIncludeChildren());
         includeAttachmentsCheckBox.setSelected(uiStateService.isIncludeAttachments());
+        onlyUsedAttachmentsCheckBox.setSelected(uiStateService.isOnlyUsedAttachments());
+        syncOnlyUsedAttachmentsEnabled();
         debugCheckBox.setSelected(uiStateService.isDebug());
         reportOnErrorCheckBox.setSelected(uiStateService.isReportOnError());
         skipUnchangedCheckBox.setSelected(uiStateService.isSkipUnchanged());
         exportSpaceCheckBox.setSelected(uiStateService.isExportSpace());
         formatComboBox.setSelectedIndex("md".equalsIgnoreCase(uiStateService.getFormat()) ? 1 : 0);
+        exportThreadsSpinner.setValue(uiStateService.getExportThreads());
     }
 
     private void persistState() {
@@ -305,16 +342,27 @@ public class ConfluenceExportToolWindow {
         uiStateService.setExportColors(exportColors);
         uiStateService.setIncludeChildren(includeChildrenCheckBox.isSelected());
         uiStateService.setIncludeAttachments(includeAttachmentsCheckBox.isSelected());
+        uiStateService.setOnlyUsedAttachments(onlyUsedAttachmentsCheckBox.isSelected());
         uiStateService.setDebug(debugCheckBox.isSelected());
         uiStateService.setReportOnError(reportOnErrorCheckBox.isSelected());
         uiStateService.setSkipUnchanged(skipUnchangedCheckBox.isSelected());
         uiStateService.setExportSpace(exportSpaceCheckBox.isSelected());
         uiStateService.setFormat(FORMAT_VALUES[Math.max(0, formatComboBox.getSelectedIndex())]);
+        uiStateService.setExportThreads(selectedThreads());
     }
 
-    private void runExportInBackground(String url, Path targetDir, boolean exportColors, boolean includeChildren,
-                                       boolean includeAttachments, boolean debug, boolean reportOnError,
-                                       OutputFormat format, boolean skipUnchanged, boolean exportSpace) {
+    /** Фильтр вложений имеет смысл, только когда вложения вообще качаются. */
+    private void syncOnlyUsedAttachmentsEnabled() {
+        onlyUsedAttachmentsCheckBox.setEnabled(includeAttachmentsCheckBox.isSelected());
+    }
+
+    /** Значение спиннера параллелизма. */
+    private int selectedThreads() {
+        Object value = exportThreadsSpinner.getValue();
+        return value instanceof Number number ? number.intValue() : ExportOptions.DEFAULT_THREADS;
+    }
+
+    private void runExportInBackground(String url, Path targetDir, ExportOptions options, boolean reportOnError) {
         exportButton.setEnabled(false);
         AtomicReference<Throwable> errorRef = new AtomicReference<>();
         AtomicReference<String> titleRef = new AtomicReference<>();
@@ -329,9 +377,7 @@ public class ConfluenceExportToolWindow {
             public void run(@NotNull ProgressIndicator indicator) {
                 try {
                     indicator.setText(message("toolwindow.ConfluenceExport.Progress.running.text"));
-                    String title = ConvertDocsUrlToAdoc.getInstance()
-                            .convert(url, targetDir, exportColors, debug, includeChildren, includeAttachments,
-                                    format, skipUnchanged, exportSpace, indicator);
+                    String title = ConvertDocsUrlToAdoc.getInstance().convert(url, targetDir, options, indicator);
                     titleRef.set(title);
                     // Принудительный отчёт по запросу пользователя (тихая ошибка без исключения).
                     if (reportOnError) {
@@ -356,7 +402,7 @@ public class ConfluenceExportToolWindow {
                         "Export successful.\nURL: %s\nDirectory: %s\nColor export: %s\nTitle: %s",
                         url,
                         targetDir,
-                        exportColors ? "enabled" : "disabled",
+                        options.exportColors() ? "enabled" : "disabled",
                         titleRef.get()
                 );
                 Path report = reportRef.get();

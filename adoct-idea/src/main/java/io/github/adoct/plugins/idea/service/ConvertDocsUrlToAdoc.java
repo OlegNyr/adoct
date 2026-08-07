@@ -8,7 +8,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 import io.github.adoct.plugins.idea.settings.ConfluenceSettingsService;
 import io.github.adoct.parser.DispatcherPage;
-import io.github.adoct.parser.OutputFormat;
 import io.github.adoct.parser.ProgressCallback;
 import io.github.adoct.parser.confluence.ConfluenceClient;
 import io.github.adoct.parser.confluence.ObjectMapperExt;
@@ -29,9 +28,8 @@ public final class ConvertDocsUrlToAdoc {
         return ApplicationManager.getApplication().getService(ConvertDocsUrlToAdoc.class);
     }
 
-    public String convert(String url, Path targetDir, boolean exportColors, boolean debug,
-                          boolean includeChildren, boolean includeAttachments, OutputFormat format,
-                          boolean skipUnchanged, boolean exportSpace, @NotNull ProgressIndicator indicator) {
+    public String convert(String url, Path targetDir, @NotNull ExportOptions options,
+                          @NotNull ProgressIndicator indicator) {
         indicator.checkCanceled();
         indicator.setIndeterminate(false);
         indicator.setFraction(0.1);
@@ -49,12 +47,14 @@ public final class ConvertDocsUrlToAdoc {
                     targetDir,
                     ObjectMapperExt.INSTANT
             );
-            dispatcherPage.setExportColors(exportColors);
-            dispatcherPage.setDebug(debug);
-            dispatcherPage.setIncludeChildren(includeChildren);
-            dispatcherPage.setIncludeAttachments(includeAttachments);
-            dispatcherPage.setFormat(format == null ? OutputFormat.ADOC : format);
-            dispatcherPage.setSkipUnchanged(skipUnchanged);
+            dispatcherPage.setExportColors(options.exportColors());
+            dispatcherPage.setDebug(options.debug());
+            dispatcherPage.setIncludeChildren(options.includeChildren());
+            dispatcherPage.setIncludeAttachments(options.includeAttachments());
+            dispatcherPage.setOnlyUsedAttachments(options.onlyUsedAttachments());
+            dispatcherPage.setFormat(options.format());
+            dispatcherPage.setSkipUnchanged(options.skipUnchanged());
+            dispatcherPage.setExportThreads(options.exportThreads());
 
             try {
                 ProgressCallback progress = (text, step) -> {
@@ -64,7 +64,7 @@ public final class ConvertDocsUrlToAdoc {
                     indicator.setFraction(indicator.getFraction() + step);
                     indicator.checkCanceled();
                 };
-                String title = exportSpace
+                String title = options.exportSpace()
                         ? dispatcherPage.generateSpace(extractSpaceKey(url), progress)
                         : dispatcherPage.generate(resolvePageId(confluenceClient, url), progress);
 

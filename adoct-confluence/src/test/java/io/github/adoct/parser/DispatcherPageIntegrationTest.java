@@ -371,6 +371,37 @@ public class DispatcherPageIntegrationTest {
     }
 
     @Test
+    public void onlyUsedAttachmentsSkipsUnreferencedFiles() {
+        RecordingGateway gateway = new RecordingGateway(pageWithAttachments());
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+        dispatcher.setOnlyUsedAttachments(true);
+
+        dispatcher.generate("123", (t, v) -> { });
+
+        // doc.pdf на странице есть (ac:link), старый черновик — нет
+        assertEquals(List.of("doc.pdf"), gateway.loaded.stream().map(LinkResult::title).sorted().toList());
+    }
+
+    @Test
+    public void allAttachmentsDownloadedWhenFilterDisabled() {
+        RecordingGateway gateway = new RecordingGateway(pageWithAttachments());
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("123", (t, v) -> { });
+
+        assertEquals(List.of("doc.pdf", "черновик-2019.docx"),
+                gateway.loaded.stream().map(LinkResult::title).sorted().toList());
+    }
+
+    /** Страница с двумя вложениями, из которых тело ссылается только на {@code doc.pdf}. */
+    private ContentPage pageWithAttachments() {
+        return new ContentPage("Главная", "http://confluence/Главная", "2024-01-01T00:00:00.000+0000",
+                CONTENT, "<p>view</p>",
+                Map.of("doc.pdf", new LinkResult("doc.pdf", "/download/doc.pdf"),
+                        "черновик-2019.docx", new LinkResult("черновик-2019.docx", "/download/черновик.docx")));
+    }
+
+    @Test
     public void confluencePageUrlsBecomeLocalPaths() throws IOException {
         UrlLinkGateway gateway = new UrlLinkGateway();
         DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
