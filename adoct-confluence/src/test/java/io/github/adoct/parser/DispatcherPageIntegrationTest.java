@@ -410,6 +410,109 @@ public class DispatcherPageIntegrationTest {
         assertTrue(parent, parent.contains("link:Раздел%20про%20всё/index.adoc[Раздел про всё]"));
     }
 
+    @Test
+    public void bulkTreeReplacesPerPageChildRequests() throws IOException {
+        BulkTreeGateway gateway = new BulkTreeGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("p", (t, v) -> { });
+
+        // Дерево пришло одним пакетом — обход по одной странице не нужен ни в пред-проходе, ни в export
+        assertEquals("childPages() не должен вызываться при пакетном дереве", 0, gateway.childPagesCalls.get());
+        Path root = tmp.resolve("Родитель");
+        assertTrue(Files.exists(root.resolve("index.adoc")));
+        assertTrue(Files.exists(root.resolve("Ребёнок").resolve("index.adoc")));
+        assertTrue(Files.exists(root.resolve("Ребёнок").resolve("Внук").resolve("index.adoc")));
+        // Карта папок из пакетной выдачи так же делает перекрёстную ссылку локальной
+        String parent = Files.readString(root.resolve("index.adoc")).replace("\r\n", "\n");
+        assertTrue(parent, parent.contains("link:Ребёнок/Внук/index.adoc[Внук]"));
+    }
+
+    @Test
+    public void fallsBackToWalkingWhenBulkTreeEmpty() throws IOException {
+        // Гейтвей не умеет spaceTree/subtree — должен отработать обход childPages, как раньше
+        CrossLinkGateway gateway = new CrossLinkGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("p", (t, v) -> { });
+
+        String parent = Files.readString(tmp.resolve("Родитель").resolve("index.adoc")).replace("\r\n", "\n");
+        assertTrue(parent, parent.contains("link:Ребёнок/index.adoc[Ребёнок]"));
+    }
+
+    @Test
+    public void unchangedPageIsSkippedWithoutLoadingItsBody() throws IOException {
+        BulkTreeGateway gateway = new BulkTreeGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("p", (t, v) -> { });
+        Path child = tmp.resolve("Родитель").resolve("Ребёнок").resolve("index.adoc");
+        Files.writeString(child, Files.readString(child) + "\nSENTINEL");
+        int childLoadsAfterFirst = gateway.mainPageCalls.getOrDefault("c", 0);
+
+        dispatcher.generate("p", (t, v) -> { });
+
+        // Версия известна из дерева — за телом неизменившейся страницы идти незачем
+        assertEquals("тело неизменившейся страницы не должно загружаться",
+                childLoadsAfterFirst, (int) gateway.mainPageCalls.getOrDefault("c", 0));
+        assertTrue("страница не должна перевыгружаться", Files.readString(child).contains("SENTINEL"));
+    }
+
+    @Test
+    public void changedPageIsReExportedEvenWithKnownVersion() throws IOException {
+        BulkTreeGateway gateway = new BulkTreeGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("p", (t, v) -> { });
+        Path child = tmp.resolve("Родитель").resolve("Ребёнок").resolve("index.adoc");
+        Files.writeString(child, Files.readString(child) + "\nSENTINEL");
+
+        gateway.version = "v2";
+        dispatcher.generate("p", (t, v) -> { });
+
+        assertFalse("изменившаяся страница должна перевыгрузиться", Files.readString(child).contains("SENTINEL"));
+    }
+
+    /**
+     * Фейк, умеющий отдать всё поддерево одним пакетом ({@code subtree}) и падающий на попытке
+     * обойти дерево по одной странице.
+     */
+    private static class BulkTreeGateway extends FakeGateway {
+        final AtomicInteger childPagesCalls = new AtomicInteger();
+        final Map<String, Integer> mainPageCalls = new java.util.HashMap<>();
+        String version = "v1";
+        private final Map<String, String> titles = Map.of("p", "Родитель", "c", "Ребёнок", "g", "Внук");
+
+        BulkTreeGateway() {
+            super(null);
+        }
+
+        @Override
+        public List<ConfluenceGateway.PageNode> subtree(String rootId) {
+            return List.of(new ConfluenceGateway.PageNode("c", "Ребёнок", "p", version),
+                    new ConfluenceGateway.PageNode("g", "Внук", "c", version));
+        }
+
+        @Override
+        public ContentPage getMainPage(String id) {
+            mainPageCalls.merge(id, 1, Integer::sum);
+            String title = titles.get(id);
+            String content = "p".equals(id)
+                    ? "<h1>Родитель</h1><p>См. <ac:link><ri:page ri:content-title=\"Внук\"/>"
+                            + "<ac:plain-text-link-body>Внук</ac:plain-text-link-body></ac:link></p>"
+                    : "<h1>" + title + "</h1><p>тело</p>";
+            // Версия страницы совпадает с версией в дереве — иначе быстрый пропуск не сработал бы
+            return new ContentPage(title, "http://confluence/" + title, version,
+                    content, "<p>view</p>", Map.of());
+        }
+
+        @Override
+        public List<ConfluenceGateway.PageRef> childPages(String id) {
+            childPagesCalls.incrementAndGet();
+            throw new AssertionError("childPages() вызван, хотя дерево получено пакетом: " + id);
+        }
+    }
+
     /** Базовый фейк: отдаёт заданную страницу, резолвит ссылки детерминированно, вложения не качает. */
     private static class FakeGateway implements ConfluenceGateway {
         final ContentPage page;

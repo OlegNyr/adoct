@@ -274,8 +274,7 @@ public class ConfluenceSettingsPanel {
             return;
         }
 
-        try {
-            ConfluenceClient client = new ConfluenceClient(url, token);
+        try (ConfluenceClient client = new ConfluenceClient(url, token)) {
             int result = client.verifyToken();
             if (result != 200) {
                 Messages.showInfoMessage("Connection successful!", "Test Connection");

@@ -24,7 +24,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -48,6 +50,8 @@ public final class ToolContext {
 
     private final EndpointSupplier endpoints;
     private final ObjectMapper mapper = ObjectMapperExt.INSTANT;
+    /** Confluence-клиенты по точке подключения ({@code host + token}) — см. {@link #confluence(JsonNode)}. */
+    private final Map<String, ConfluenceClient> confluenceClients = new ConcurrentHashMap<>();
 
     public ToolContext(EndpointSupplier endpoints) {
         this.endpoints = endpoints;
@@ -87,10 +91,16 @@ public final class ToolContext {
         return new BitbucketClient(ep.host(), ep.token());
     }
 
-    /** Confluence-клиент чтения/экспорта (parser-движок); по умолчанию — Confluence-хост. */
+    /**
+     * Confluence-клиент чтения/экспорта (parser-движок); по умолчанию — Confluence-хост.
+     * <p>
+     * Клиент держит пул соединений, поэтому кэшируется на точку подключения: MCP-сервер живёт долго, и
+     * создавать пул заново на каждый вызов инструмента значило бы терять keep-alive (и течь сокетами).
+     */
     public ConfluenceClient confluence(JsonNode args) {
         AtlassianEndpoint ep = endpoint(args, AtlassianKind.CONFLUENCE);
-        return new ConfluenceClient(ep.host(), ep.token());
+        return confluenceClients.computeIfAbsent(ep.host() + "\n" + ep.token(),
+                key -> new ConfluenceClient(ep.host(), ep.token()));
     }
 
     /** Confluence-клиент записи/публикации (generate-движок); по умолчанию — Confluence-хост. */

@@ -7,15 +7,24 @@ import org.apache.http.HttpStatus;
 import org.apache.http.client.HttpResponseException;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.client.methods.RequestBuilder;
-import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.config.Registry;
+import org.apache.http.config.RegistryBuilder;
+import org.apache.http.conn.socket.ConnectionSocketFactory;
+import org.apache.http.conn.socket.PlainConnectionSocketFactory;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.util.EntityUtils;
 import io.github.adoct.parser.confluence.content.Attachment;
 import io.github.adoct.parser.confluence.content.Body;
 import io.github.adoct.parser.confluence.content.ContentMainPage;
 import io.github.adoct.parser.confluence.content.History;
+import io.github.adoct.parser.confluence.content.Label;
+import io.github.adoct.parser.confluence.content.Labels;
 import io.github.adoct.parser.confluence.content.LinksDto;
+import io.github.adoct.parser.confluence.content.Metadata;
 import io.github.adoct.parser.confluence.content.Person;
 import io.github.adoct.parser.confluence.content.ResultDto;
 import io.github.adoct.parser.confluence.content.Storage;
@@ -24,31 +33,82 @@ import io.github.adoct.parser.confluence.content.View;
 import io.github.adoct.parser.confluence.searche.ConfluenceSearchResult;
 import io.github.adoct.parser.confluence.user.UserDto;
 
+import javax.net.ssl.SSLContext;
+
+import java.io.Closeable;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
+/**
+ * REST-клиент Confluence для чтения/экспорта.
+ *
+ * <p>Держит <b>один</b> {@link CloseableHttpClient} с пулом соединений на всё время жизни: выгрузка
+ * пространства — это тысячи запросов, и поднимать TLS-соединение заново на каждый из них дороже, чем
+ * сам запрос. Поэтому клиент {@link Closeable} — владелец обязан его закрыть (обычно
+ * try-with-resources вокруг всей выгрузки).
+ */
 @Slf4j
-public class ConfluenceClient implements ConfluenceGateway {
+public class ConfluenceClient implements ConfluenceGateway, Closeable {
     private static final String AUTHORIZATION_HEADER = "Authorization";
-    private final HttpClientBuilder httpClientBuilder;
+    /** Размер пула соединений: с запасом под будущую параллельную выгрузку страниц и вложений. */
+    private static final int MAX_CONNECTIONS = 32;
+    /** Через сколько выбрасывать простаивающие соединения (Confluence за балансировщиком рвёт их сам). */
+    private static final long IDLE_EVICT_SECONDS = 30L;
+    /** Размер страницы при постраничном чтении вложений (дефолт Confluence — 25). */
+    private static final int ATTACHMENT_PAGE_SIZE = 200;
+
+    private final PoolingHttpClientConnectionManager connectionManager;
+    private final CloseableHttpClient httpClient;
     private final String host;
     private String urlBase;
 
     public ConfluenceClient(String host, String token) {
-        httpClientBuilder = HttpClients.custom()
-                .setSSLContext(ConfluenceSsl.newInstance(ConfluenceSsl.NOT_VERIFY_SSL))
-                .setSSLHostnameVerifier(ConfluenceSsl.NOT_VERIFY_HOST)
-                .setDefaultHeaders(List.of(new BasicHeader(AUTHORIZATION_HEADER, "Bearer " + token)));
+        SSLContext sslContext = ConfluenceSsl.newInstance(ConfluenceSsl.NOT_VERIFY_SSL);
+        // Настройки SSL с билдера игнорируются, если задан свой connection manager, — поэтому
+        // самоподписанные сертификаты приходится разрешать в самой фабрике сокетов.
+        Registry<ConnectionSocketFactory> socketFactories = RegistryBuilder.<ConnectionSocketFactory>create()
+                .register("http", PlainConnectionSocketFactory.getSocketFactory())
+                .register("https", new SSLConnectionSocketFactory(sslContext, ConfluenceSsl.NOT_VERIFY_HOST))
+                .build();
+        connectionManager = new PoolingHttpClientConnectionManager(socketFactories);
+        connectionManager.setMaxTotal(MAX_CONNECTIONS);
+        connectionManager.setDefaultMaxPerRoute(MAX_CONNECTIONS);
+
+        httpClient = HttpClients.custom()
+                .setConnectionManager(connectionManager)
+                .evictIdleConnections(IDLE_EVICT_SECONDS, TimeUnit.SECONDS)
+                .setDefaultHeaders(List.of(new BasicHeader(AUTHORIZATION_HEADER, "Bearer " + token)))
+                .build();
 
         this.host = host;
         this.urlBase = this.host + "/rest/api";
+    }
+
+    /**
+     * Закрывает пул соединений. После вызова клиент непригоден.
+     * <p>
+     * Не бросает: закрытие пула — уборка, реагировать вызывающему всё равно не на что, а
+     * {@code throws IOException} заставлял бы каждый try-with-resources городить лишний catch.
+     */
+    @Override
+    public void close() {
+        try {
+            httpClient.close();
+        } catch (IOException e) {
+            log.warn("Не удалось закрыть HTTP-клиент Confluence: {}", e.getMessage());
+        }
+        connectionManager.close();
     }
 
     @SneakyThrows
@@ -57,29 +117,27 @@ public class ConfluenceClient implements ConfluenceGateway {
                 .setUri(urlBase + "/user/current")
                 .build();
 
-        try (var client = httpClientBuilder.build()) {
-            return client.execute(httpRequest, httpResponse -> {
-                int statusCode = httpResponse.getStatusLine().getStatusCode();
-                if (statusCode >= HttpStatus.SC_INTERNAL_SERVER_ERROR) {
-                    EntityUtils.consume(httpResponse.getEntity());
-                    throw new HttpResponseException(statusCode, httpResponse.getStatusLine().getReasonPhrase());
-                } else if (statusCode < HttpStatus.SC_OK || statusCode > HttpStatus.SC_PARTIAL_CONTENT) {
-                    EntityUtils.consume(httpResponse.getEntity());
-                    log.error("Status code {}", statusCode);
-                    return statusCode;
-                } else {
-                    return statusCode;
-                }
-            });
-        }
-
+        return httpClient.execute(httpRequest, httpResponse -> {
+            int statusCode = httpResponse.getStatusLine().getStatusCode();
+            if (statusCode >= HttpStatus.SC_INTERNAL_SERVER_ERROR) {
+                EntityUtils.consume(httpResponse.getEntity());
+                throw new HttpResponseException(statusCode, httpResponse.getStatusLine().getReasonPhrase());
+            } else if (statusCode < HttpStatus.SC_OK || statusCode > HttpStatus.SC_PARTIAL_CONTENT) {
+                EntityUtils.consume(httpResponse.getEntity());
+                log.error("Status code {}", statusCode);
+                return statusCode;
+            } else {
+                return statusCode;
+            }
+        });
     }
 
     @SneakyThrows
     public ContentPage getMainPage(String id) {
         HttpUriRequest httpRequest = RequestBuilder.get()
                 .setUri(urlBase + "/content/%s".formatted(id))
-                .addParameter("expand", "version,body.storage,body.view,space,history")
+                // metadata.labels — чтобы не ходить за метками отдельным запросом на каждую страницу
+                .addParameter("expand", "version,body.storage,body.view,space,history,metadata.labels")
                 .build();
 
         String body = doRequestAndFailIfNot20x(httpRequest);
@@ -110,7 +168,23 @@ public class ConfluenceClient implements ConfluenceGateway {
         Map<String, LinkResult> attachment = getAttachments(id);
 
         return new ContentPage(contentMainPage.getTitle(), host + contentMainPage.getLinks().getWebui(),
-                date, content, view, attachment, space, createdDate, author);
+                date, content, view, attachment, space, createdDate, author, labelsOf(contentMainPage));
+    }
+
+    /**
+     * Метки из уже разобранного ответа ({@code expand=metadata.labels}). {@code null}, если Confluence
+     * секцию не отдал — тогда вызывающий сходит за метками отдельным запросом ({@link #labels(String)}).
+     */
+    private static List<String> labelsOf(ContentMainPage page) {
+        // Metadata — legacy-DTO без @Data, поля читаем напрямую.
+        Labels labels = Optional.ofNullable(page.getMetadata()).map(metadata -> metadata.labels).orElse(null);
+        if (labels == null || labels.getResults() == null) {
+            return null;
+        }
+        return labels.getResults().stream()
+                .map(Label::displayName)
+                .filter(name -> !name.isBlank())
+                .toList();
     }
 
     /**
@@ -160,6 +234,82 @@ public class ConfluenceClient implements ConfluenceGateway {
     @Override
     public List<PageRef> spaceRootPages(String spaceKey) {
         return pagedRefs(urlBase + "/space/%s/content/page".formatted(spaceKey), "depth", "root");
+    }
+
+    /**
+     * Все страницы пространства одним пакетом: {@code /space/{key}/content/page} без {@code depth=root}
+     * отдаёт всё дерево, а {@code expand=ancestors} — цепочку предков каждой страницы, из которой
+     * восстанавливается родитель. Пагинация по 100 вместо запроса на каждую страницу.
+     */
+    @Override
+    public List<PageNode> spaceTree(String spaceKey) {
+        return pagedNodes(urlBase + "/space/%s/content/page".formatted(spaceKey), "expand", "ancestors,version");
+    }
+
+    /**
+     * Все потомки страницы одним пакетом через CQL {@code ancestor = <id>}. Сама страница в выдачу
+     * не входит — родитель для её прямых детей вычисляется по {@code ancestors}.
+     */
+    @Override
+    public List<PageNode> subtree(String rootId) {
+        return pagedNodes(urlBase + "/content/search",
+                "cql", "ancestor = %s and type = page".formatted(rootId),
+                "expand", "ancestors,version");
+    }
+
+    /**
+     * Постранично собирает {@link PageNode} по URL, отдающему список контента с {@code ancestors}.
+     * <p>
+     * Best-effort: любая ошибка (нет прав, эндпоинт недоступен, упёрлись в лимит глубины пагинации
+     * CQL) — пустой список, чтобы вызывающий откатился на обход дерева по одной странице.
+     */
+    private List<PageNode> pagedNodes(String uri, String... extraParams) {
+        List<PageNode> nodes = new ArrayList<>();
+        int start = 0;
+        int limit = 100;
+        try {
+            while (true) {
+                RequestBuilder request = RequestBuilder.get()
+                        .setUri(uri)
+                        .addParameter("start", String.valueOf(start))
+                        .addParameter("limit", String.valueOf(limit));
+                for (int i = 0; i + 1 < extraParams.length; i += 2) {
+                    request.addParameter(extraParams[i], extraParams[i + 1]);
+                }
+                String body = doRequestAndFailIfNot20x(request.build());
+                if (body == null) {
+                    break;
+                }
+                int before = nodes.size();
+                for (com.fasterxml.jackson.databind.JsonNode r : ObjectMapperExt.INSTANT.readTree(body).path("results")) {
+                    String id = r.path("id").asText(null);
+                    String title = r.path("title").asText(null);
+                    if (id != null && title != null) {
+                        nodes.add(new PageNode(id, title, lastAncestorId(r),
+                                r.path("version").path("when").asText(null)));
+                    }
+                }
+                int page = nodes.size() - before;
+                if (page < limit) {
+                    break;
+                }
+                start += page;
+            }
+        } catch (Exception e) {
+            log.warn("Не удалось загрузить дерево страниц пакетом ({}): {} — откатываемся на обход по одной",
+                    uri, e.getMessage());
+            return List.of();
+        }
+        return nodes;
+    }
+
+    /** Id непосредственного родителя — последний элемент {@code ancestors}; {@code null} для верхнего уровня. */
+    private static String lastAncestorId(com.fasterxml.jackson.databind.JsonNode result) {
+        com.fasterxml.jackson.databind.JsonNode ancestors = result.path("ancestors");
+        if (!ancestors.isArray() || ancestors.isEmpty()) {
+            return null;
+        }
+        return ancestors.get(ancestors.size() - 1).path("id").asText(null);
     }
 
     /** Постранично собирает {@code (id, title)} по URL, отдающему {@link ConfluenceSearchResult}. */
@@ -220,15 +370,21 @@ public class ConfluenceClient implements ConfluenceGateway {
         }
     }
 
+    /**
+     * Вложения <b>самой</b> страницы ({@code /child/attachment}), а не всего её поддерева.
+     * <p>
+     * Раньше здесь был {@code /descendant/attachment}: для корневой страницы он отдаёт вложения всего
+     * пространства, из-за чего каждый файл скачивался в {@code attache/} каждого своего предка, а
+     * пагинация по 25 давала сотни лишних запросов на страницу.
+     */
     @SneakyThrows
     public void getAttachments(Map<String, LinkResult> res, String id, int start) {
 
         HttpUriRequest httpRequest = RequestBuilder.get()
-                .setUri(urlBase + "/content/%s/descendant/attachment".formatted(id))
+                .setUri(urlBase + "/content/%s/child/attachment".formatted(id))
                 .addParameter("start", String.valueOf(start))
-                //.addParameter("expand", "version,body.storage,body.view,descendants.attachment")
+                .addParameter("limit", String.valueOf(ATTACHMENT_PAGE_SIZE))
                 .build();
-        //?limit=25&start=25
 
         String body = doRequestAndFailIfNot20x(httpRequest);
         Attachment attachment = ObjectMapperExt.INSTANT.readValue(body, Attachment.class);
@@ -256,40 +412,36 @@ public class ConfluenceClient implements ConfluenceGateway {
                 .setUri(host + link)
                 .build();
 
-        try (var client = httpClientBuilder.build()) {
-            return client.execute(httpRequest, httpResponse -> {
-                int statusCode = httpResponse.getStatusLine().getStatusCode();
-                if (statusCode >= HttpStatus.SC_INTERNAL_SERVER_ERROR) {
-                    EntityUtils.consume(httpResponse.getEntity());
-                    throw new HttpResponseException(statusCode, httpResponse.getStatusLine().getReasonPhrase());
-                } else if (statusCode < HttpStatus.SC_OK || statusCode > HttpStatus.SC_PARTIAL_CONTENT) {
-                    EntityUtils.consume(httpResponse.getEntity());
-                    log.error("Status code {}", statusCode);
-                    return null;
-                } else {
-                    return EntityUtils.toByteArray(httpResponse.getEntity());
-                }
-            });
-        }
+        return httpClient.execute(httpRequest, httpResponse -> {
+            int statusCode = httpResponse.getStatusLine().getStatusCode();
+            if (statusCode >= HttpStatus.SC_INTERNAL_SERVER_ERROR) {
+                EntityUtils.consume(httpResponse.getEntity());
+                throw new HttpResponseException(statusCode, httpResponse.getStatusLine().getReasonPhrase());
+            } else if (statusCode < HttpStatus.SC_OK || statusCode > HttpStatus.SC_PARTIAL_CONTENT) {
+                EntityUtils.consume(httpResponse.getEntity());
+                log.error("Status code {}", statusCode);
+                return null;
+            } else {
+                return EntityUtils.toByteArray(httpResponse.getEntity());
+            }
+        });
     }
 
     @SneakyThrows
     private String doRequestAndFailIfNot20x(HttpUriRequest httpRequest) {
-        try (var client = httpClientBuilder.build()) {
-            return client.execute(httpRequest, httpResponse -> {
-                int statusCode = httpResponse.getStatusLine().getStatusCode();
-                if (statusCode >= HttpStatus.SC_INTERNAL_SERVER_ERROR) {
-                    EntityUtils.consume(httpResponse.getEntity());
-                    throw new HttpResponseException(statusCode, httpResponse.getStatusLine().getReasonPhrase());
-                } else if (statusCode < HttpStatus.SC_OK || statusCode > HttpStatus.SC_PARTIAL_CONTENT) {
-                    EntityUtils.consume(httpResponse.getEntity());
-                    log.error("Status code {}", statusCode);
-                    return null;
-                } else {
-                    return EntityUtils.toString(httpResponse.getEntity());
-                }
-            });
-        }
+        return httpClient.execute(httpRequest, httpResponse -> {
+            int statusCode = httpResponse.getStatusLine().getStatusCode();
+            if (statusCode >= HttpStatus.SC_INTERNAL_SERVER_ERROR) {
+                EntityUtils.consume(httpResponse.getEntity());
+                throw new HttpResponseException(statusCode, httpResponse.getStatusLine().getReasonPhrase());
+            } else if (statusCode < HttpStatus.SC_OK || statusCode > HttpStatus.SC_PARTIAL_CONTENT) {
+                EntityUtils.consume(httpResponse.getEntity());
+                log.error("Status code {}", statusCode);
+                return null;
+            } else {
+                return EntityUtils.toString(httpResponse.getEntity());
+            }
+        });
     }
 
     /**
@@ -432,13 +584,23 @@ public class ConfluenceClient implements ConfluenceGateway {
         return new LinkResult(userDto.getDisplayName(), host + "/display/~%s".formatted(userDto.getUsername()));
     }
 
+    /**
+     * Скачивает вложения в каталог страницы.
+     *
+     * <p>Уже лежащий на диске файл <b>перекачивается</b>: сюда попадают только страницы, которые
+     * выгружаются заново (неизменившиеся отсекаются раньше, по версии), а значит вложение могло
+     * измениться — по имени файла этого не видно. Дублируется только защита от повторного скачивания
+     * одного и того же имени в пределах одного вызова (свои вложения + картинки с чужих страниц).
+     */
     @SneakyThrows
     public void loadAttach(Collection<LinkResult> values, Path attachmentFolder, Consumer<String> progress) {
+        Set<String> loaded = new HashSet<>();
         for (LinkResult value : values) {
-            Path file = attachmentFolder.resolve(value.title());
-            if (Files.exists(file)) {
-                log.warn("Ignore load {} file exist", file);
+            if (!loaded.add(value.title())) {
+                log.debug("Вложение {} уже скачано в этом проходе — пропускаем", value.title());
+                continue;
             }
+            Path file = attachmentFolder.resolve(value.title());
             byte[] bytes = downLoad(value.url());
             if (bytes == null) {
                 // нет прав/файл удалён — пропускаем, но экспорт не роняем

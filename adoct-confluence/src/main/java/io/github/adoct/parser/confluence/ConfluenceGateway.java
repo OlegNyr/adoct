@@ -36,6 +36,38 @@ public interface ConfluenceGateway {
         return List.of();
     }
 
+    /**
+     * Узел дерева страниц: id, заголовок, id родителя ({@code null} — страница верхнего уровня) и
+     * версия ({@code version.when}). Плоский список таких узлов однозначно задаёт дерево.
+     *
+     * <p>{@code version} позволяет отсеять неизменившиеся страницы <b>до</b> загрузки их тела;
+     * {@code null} — версия неизвестна, страницу придётся загрузить и сверить как раньше.
+     */
+    record PageNode(String id, String title, String parentId, String version) {
+
+        /** Узел с неизвестной версией. */
+        public PageNode(String id, String title, String parentId) {
+            this(id, title, parentId, null);
+        }
+    }
+
+    /**
+     * Все страницы пространства <b>одним пакетом</b> (пагинация внутри) — чтобы не обходить дерево
+     * запросом на страницу. Пустой список означает «не поддерживается / не получилось»: вызывающий
+     * обязан откатиться на рекурсивный обход через {@link #childPages}.
+     */
+    default List<PageNode> spaceTree(String spaceKey) {
+        return List.of();
+    }
+
+    /**
+     * Все потомки страницы (на любой глубине) одним пакетом. Сама страница {@code rootId} в выдачу
+     * не входит. Пустой список — как и в {@link #spaceTree}, сигнал откатиться на обход по одному.
+     */
+    default List<PageNode> subtree(String rootId) {
+        return List.of();
+    }
+
     /** Ищет страницу по заголовку (и опционально ключу пространства). */
     List<LinkResult> search(String title, String key);
 

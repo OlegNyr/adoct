@@ -14,6 +14,7 @@ public class ContentMainPage {
     public String status;
     public String title;
     public Space space;
+    public Metadata metadata;
     public Descendants descendants;
     public Version version;
     public History history;

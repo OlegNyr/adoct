@@ -22,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -80,6 +81,18 @@ public class DispatcherPage {
     private final Map<String, Path> pageIdFolders = new HashMap<>();
     /** Корневые страницы, загруженные в пред-проходе для карты дерева — переиспользуются в export. */
     private final Map<String, ContentPage> prefetched = new HashMap<>();
+    /** Дерево выгрузки: id страницы → её прямые дети. Заполняется пред-проходом. */
+    private final Map<String, List<ConfluenceGateway.PageRef>> childrenByParent = new HashMap<>();
+    /**
+     * Узлы дерева по id — заголовок и версия, известные ещё до загрузки страницы. Позволяют отсеять
+     * неизменившуюся страницу, не скачивая её тело и вложения. Заполняется только пакетным пред-проходом.
+     */
+    private final Map<String, ConfluenceGateway.PageNode> nodesById = new HashMap<>();
+    /**
+     * Пред-проход собрал полное дерево — значит {@link #export} берёт детей из {@link #childrenByParent},
+     * а не запрашивает {@code childPages} на каждую страницу заново.
+     */
+    private boolean treeLoaded;
 
     /** Ищет записанную версию в заголовке ({@code :confluency-version:} adoc / {@code confluency-version:} md). */
     private static final Pattern VERSION_LINE = Pattern.compile("(?m)^:?confluency-version:\\s*(.+)$");
@@ -90,9 +103,7 @@ public class DispatcherPage {
      */
     @SneakyThrows
     public String generate(String id, ProgressCallback progressCallback) {
-        if (crossPageLinks) {
-            buildSiteMap(List.of(id));
-        }
+        buildSiteMap(List.of(new ConfluenceGateway.PageRef(id, null)), null, progressCallback);
         return export(id, basePath, progressCallback);
     }
 
@@ -106,9 +117,7 @@ public class DispatcherPage {
         if (roots.isEmpty()) {
             throw new IllegalArgumentException("В пространстве %s нет страниц (или нет доступа)".formatted(spaceKey));
         }
-        if (crossPageLinks) {
-            buildSiteMap(roots.stream().map(ConfluenceGateway.PageRef::id).toList());
-        }
+        buildSiteMap(roots, spaceKey, progressCallback);
         for (ConfluenceGateway.PageRef root : roots) {
             export(root.id(), basePath, progressCallback);
         }
@@ -116,39 +125,156 @@ public class DispatcherPage {
     }
 
     /**
-     * Пред-проход: строит карту {@code заголовок → папка (относительно корня выгрузки)} для всех
-     * поддеревьев (корней), чтобы ссылку на входящую в выгрузку страницу сделать локальной. Корневые
-     * страницы загружаем один раз и переиспользуем в {@link #export}. Заголовки потомков берём дёшево
-     * из {@code childPages} (без полной загрузки контента).
+     * Пред-проход: строит дерево выгрузки — карту {@code заголовок → папка} (чтобы ссылку на входящую в
+     * выгрузку страницу сделать локальной) и карту {@code id → прямые дети} (чтобы {@link #export} не
+     * запрашивал {@code childPages} на каждую страницу).
+     * <p>
+     * Сначала пробуем забрать всё дерево пакетом ({@link ConfluenceGateway#spaceTree}/
+     * {@link ConfluenceGateway#subtree} — десятки запросов на пространство). Если реализация этого не
+     * умеет или запрос не удался, откатываемся на обход по одной странице.
      */
-    private void buildSiteMap(List<String> rootIds) {
+    private void buildSiteMap(List<ConfluenceGateway.PageRef> roots, String spaceKey,
+                              ProgressCallback progressCallback) {
         pageFolders.clear();
         pageIdFolders.clear();
         prefetched.clear();
+        childrenByParent.clear();
+        nodesById.clear();
+        treeLoaded = false;
+        // Ни локальные ссылки, ни обход потомков не нужны — дерево строить незачем.
+        if (!crossPageLinks && !includeChildren) {
+            return;
+        }
+        progressCallback.next("Строим карту дерева страниц", 0D);
+        List<ConfluenceGateway.PageNode> nodes = loadTree(roots, spaceKey);
+        if (!nodes.isEmpty()) {
+            buildFromNodes(nodes);
+            treeLoaded = true;
+            progressCallback.next("Карта дерева готова: страниц %d".formatted(nodes.size()), 0D);
+            return;
+        }
+        walkSiteMap(roots, progressCallback);
+        treeLoaded = true;
+        progressCallback.next("Карта дерева готова: страниц %d".formatted(pageIdFolders.size()), 0D);
+    }
+
+    /**
+     * Плоский список всех страниц выгрузки, полученный пакетом. Пусто — режим не поддержан гейтвеем
+     * или запрос не удался (тогда вызывающий обходит дерево по одной странице).
+     */
+    private List<ConfluenceGateway.PageNode> loadTree(List<ConfluenceGateway.PageRef> roots, String spaceKey) {
+        if (spaceKey != null) {
+            return client.spaceTree(spaceKey);
+        }
+        ConfluenceGateway.PageRef root = roots.getFirst();
+        List<ConfluenceGateway.PageNode> descendants = client.subtree(root.id());
+        if (descendants.isEmpty()) {
+            return List.of();
+        }
+        // subtree() отдаёт только потомков — корень добавляем сами, его заголовок берём из страницы
+        // (она же ляжет в prefetched и переиспользуется в export).
+        List<ConfluenceGateway.PageNode> nodes = new ArrayList<>(descendants.size() + 1);
+        nodes.add(new ConfluenceGateway.PageNode(root.id(), rootTitle(root), null));
+        nodes.addAll(descendants);
+        return nodes;
+    }
+
+    /**
+     * Заголовок корня: из ссылки, если известен, иначе грузим страницу — один раз, придерживая её в
+     * {@link #prefetched} для {@link #export} (и на случай повторного обращения из отката).
+     */
+    private String rootTitle(ConfluenceGateway.PageRef root) {
+        if (root.title() != null) {
+            return root.title();
+        }
+        return prefetched.computeIfAbsent(root.id(), client::getMainPage).title();
+    }
+
+    /**
+     * Разворачивает плоский список узлов в карты папок и детей. Путь папки — цепочка заголовков от
+     * корня; узел, чьего родителя нет в выдаче, считается корневым.
+     */
+    private void buildFromNodes(List<ConfluenceGateway.PageNode> nodes) {
+        Map<String, ConfluenceGateway.PageNode> byId = new HashMap<>();
+        for (ConfluenceGateway.PageNode node : nodes) {
+            byId.putIfAbsent(node.id(), node);
+        }
+        nodesById.putAll(byId);
+        Map<String, Path> folders = new HashMap<>();
+        for (ConfluenceGateway.PageNode node : nodes) {
+            Path folder = folderOf(node, byId, folders, new HashSet<>());
+            if (crossPageLinks) {
+                pageFolders.putIfAbsent(node.title(), folder);
+                pageIdFolders.putIfAbsent(node.id(), folder);
+            }
+            if (node.parentId() != null && byId.containsKey(node.parentId())) {
+                childrenByParent.computeIfAbsent(node.parentId(), k -> new ArrayList<>())
+                        .add(new ConfluenceGateway.PageRef(node.id(), node.title()));
+            }
+        }
+        // Порядок из пакетной выдачи не совпадает с ручной сортировкой страниц в Confluence —
+        // фиксируем его по заголовку, чтобы выгрузка была детерминированной.
+        childrenByParent.values().forEach(list ->
+                list.sort(Comparator.comparing(ConfluenceGateway.PageRef::title, Comparator.nullsLast(String::compareTo))));
+    }
+
+    /** Путь папки узла с мемоизацией; {@code guard} рвёт цикл, если цепочка предков битая. */
+    private Path folderOf(ConfluenceGateway.PageNode node, Map<String, ConfluenceGateway.PageNode> byId,
+                          Map<String, Path> folders, Set<String> guard) {
+        Path known = folders.get(node.id());
+        if (known != null) {
+            return known;
+        }
+        ConfluenceGateway.PageNode parent = node.parentId() == null ? null : byId.get(node.parentId());
+        Path folder = parent == null || !guard.add(node.id())
+                ? Path.of(sanitizeFolderName(node.title()))
+                : folderOf(parent, byId, folders, guard).resolve(sanitizeFolderName(node.title()));
+        folders.put(node.id(), folder);
+        return folder;
+    }
+
+    /** Откат: обход дерева по одной странице ({@code childPages} на каждую) — как было до пакетной загрузки. */
+    private void walkSiteMap(List<ConfluenceGateway.PageRef> roots, ProgressCallback progressCallback) {
         Set<String> visited = new HashSet<>();
-        for (String rootId : rootIds) {
-            ContentPage root = client.getMainPage(rootId);
-            prefetched.put(rootId, root);
-            Path rootFolder = Path.of(sanitizeFolderName(root.title()));
-            pageFolders.put(root.title(), rootFolder);
-            pageIdFolders.put(rootId, rootFolder);
-            walkSiteMap(rootId, rootFolder, visited);
+        for (ConfluenceGateway.PageRef root : roots) {
+            String title = rootTitle(root);
+            Path rootFolder = Path.of(sanitizeFolderName(title));
+            if (crossPageLinks) {
+                pageFolders.put(title, rootFolder);
+                pageIdFolders.put(root.id(), rootFolder);
+            }
+            walkSiteMap(root.id(), rootFolder, visited, progressCallback);
         }
     }
 
-    private void walkSiteMap(String id, Path folder, Set<String> visited) {
+    private void walkSiteMap(String id, Path folder, Set<String> visited, ProgressCallback progressCallback) {
         if (!visited.add(id)) {
             return;
         }
-        for (ConfluenceGateway.PageRef ref : client.childPages(id)) {
+        // В карту кладём детей как есть: для рекурсии нужен только id, заголовок может быть неизвестен
+        // (тогда страница просто не попадёт в карту папок и в макрос children).
+        List<ConfluenceGateway.PageRef> children = client.childPages(id);
+        childrenByParent.put(id, children);
+        progressCallback.next("Строим карту дерева страниц: %d".formatted(visited.size()), 0D);
+        for (ConfluenceGateway.PageRef ref : children) {
+            // Заголовок нужен только для карты папок; без него страница просто не участвует в
+            // перекрёстных ссылках, но обойти её поддерево всё равно надо.
             if (ref.title() == null) {
+                walkSiteMap(ref.id(), folder, visited, progressCallback);
                 continue;
             }
             Path childFolder = folder.resolve(sanitizeFolderName(ref.title()));
-            pageFolders.putIfAbsent(ref.title(), childFolder);
-            pageIdFolders.putIfAbsent(ref.id(), childFolder);
-            walkSiteMap(ref.id(), childFolder, visited);
+            if (crossPageLinks) {
+                pageFolders.putIfAbsent(ref.title(), childFolder);
+                pageIdFolders.putIfAbsent(ref.id(), childFolder);
+            }
+            walkSiteMap(ref.id(), childFolder, visited, progressCallback);
         }
+    }
+
+    /** Прямые дети страницы: из дерева пред-прохода, иначе — запросом. */
+    private List<ConfluenceGateway.PageRef> childrenOf(String id) {
+        return treeLoaded ? childrenByParent.getOrDefault(id, List.of()) : client.childPages(id);
     }
 
     /**
@@ -229,14 +355,19 @@ public class DispatcherPage {
 
     @SneakyThrows
     private String export(String id, Path baseDir, ProgressCallback progressCallback) {
+        String skipped = skipUnchangedWithoutLoading(id, baseDir, progressCallback);
+        if (skipped != null) {
+            return skipped;
+        }
+
         progressCallback.next("Загрузка основной страницы", 0.2D);
         ContentPage mainPage = takePrefetched(id);
         Path destination = baseDir.resolve(sanitizeFolderName(mainPage.title()));
         this.destination = destination;
-        List<ConfluenceGateway.PageRef> children = includeChildren ? client.childPages(id) : List.of();
+        List<ConfluenceGateway.PageRef> children = includeChildren ? childrenOf(id) : List.of();
 
         // Инкрементально: не изменившуюся страницу пропускаем, но детей всё равно обходим.
-        if (skipUnchanged && isUnchanged(destination, mainPage)) {
+        if (skipUnchanged && isUnchanged(destination, mainPage.date())) {
             progressCallback.next("Пропуск (не изменилась): %s".formatted(mainPage.title()), 0.2D);
             exportChildren(children, destination, progressCallback);
             return mainPage.title();
@@ -305,7 +436,10 @@ public class DispatcherPage {
         metadata.put(MetadataKey.FILES_FOLDER, filesDirectory);
         metadata.put(MetadataKey.FILES_FOLDER_NAME, "files");
         metadata.put(MetadataKey.COLOR, exportColors);
-        metadata.put(MetadataKey.LABELS, client.labels(id));
+        // Метки обычно приезжают в основном запросе (expand=metadata.labels); отдельный вызов —
+        // только если реализация их не отдала (null, а не пустой список).
+        metadata.put(MetadataKey.LABELS,
+                mainPage.labels() != null ? mainPage.labels() : client.labels(id));
         metadata.put(MetadataKey.CHILDREN, childLinks(children));
         if (mainPage.date() != null) {
             metadata.put(MetadataKey.VERSION, mainPage.date());
@@ -382,12 +516,36 @@ public class DispatcherPage {
     }
 
     /**
+     * Пропуск неизменившейся страницы <b>без загрузки её тела</b>: заголовок и версию берём из дерева
+     * пред-прохода, поэтому за самой страницей (storage + view + вложения) идти не нужно. Возвращает
+     * заголовок пропущенной страницы либо {@code null}, если пропустить нельзя и её надо загружать.
+     * <p>
+     * Дети всё равно обходятся — каждый проверяется отдельно.
+     */
+    private String skipUnchangedWithoutLoading(String id, Path baseDir, ProgressCallback progressCallback) {
+        if (!skipUnchanged) {
+            return null;
+        }
+        ConfluenceGateway.PageNode node = nodesById.get(id);
+        if (node == null || node.version() == null) {
+            return null;
+        }
+        Path destination = baseDir.resolve(sanitizeFolderName(node.title()));
+        if (!isUnchanged(destination, node.version())) {
+            return null;
+        }
+        this.destination = destination;
+        progressCallback.next("Пропуск (не изменилась): %s".formatted(node.title()), 0.2D);
+        exportChildren(includeChildren ? childrenOf(id) : List.of(), destination, progressCallback);
+        return node.title();
+    }
+
+    /**
      * Страница не изменилась: в каталоге уже есть {@code index.<ext>} с той же версией ({@code version.when})
      * в заголовке. Нет файла/версии — считаем изменившейся (нужно выгрузить).
      */
     @SneakyThrows
-    private boolean isUnchanged(Path destination, ContentPage mainPage) {
-        String current = mainPage.date();
+    private boolean isUnchanged(Path destination, String current) {
         if (current == null || current.isBlank()) {
             return false;
         }

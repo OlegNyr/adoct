@@ -194,12 +194,19 @@ public class ConfluenceSettingsConfigurable implements SearchableConfigurable, C
         });
     }
 
+    /** Разовая проверка токена Confluence: клиент держит пул соединений, поэтому закрываем его сразу. */
+    private static int verifyConfluenceToken(String host, String token) {
+        try (ConfluenceClient client = new ConfluenceClient(host, token)) {
+            return client.verifyToken();
+        }
+    }
+
     private static VerificationResult checkToken(String host, String token, AtlassianKind kind) {
         try {
             int code = switch (kind) {
                 case JIRA -> new JiraClient(host, token).verifyToken();
                 case BITBUCKET -> new BitbucketClient(host, token).verifyToken();
-                case CONFLUENCE -> new ConfluenceClient(host, token).verifyToken();
+                case CONFLUENCE -> verifyConfluenceToken(host, token);
             };
             if (code >= 200 && code < 300) {
                 return new VerificationResult(true, message("settings.Confluence.verifyToken.success.message", code));

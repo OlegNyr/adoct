@@ -8,6 +8,8 @@ public class Metadata {
 
     public String mediaType;
     public String comment;
+    /** Метки страницы — приходят только при {@code expand=metadata.labels}. */
+    public Labels labels;
 
 
 }

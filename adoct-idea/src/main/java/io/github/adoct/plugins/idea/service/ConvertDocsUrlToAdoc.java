@@ -41,39 +41,42 @@ public final class ConvertDocsUrlToAdoc {
                 .getServer(url)
                 .orElseThrow(() -> new RuntimeException("Server not found in setting"));
 
-        ConfluenceClient confluenceClient = new ConfluenceClient(serverEntry.getHost(), serverEntry.getToken());
+        // Клиент держит пул соединений на всю выгрузку — закрываем его вместе с ней.
+        try (ConfluenceClient confluenceClient =
+                     new ConfluenceClient(serverEntry.getHost(), serverEntry.getToken())) {
 
-        DispatcherPage dispatcherPage = new DispatcherPage(confluenceClient,
-                targetDir,
-                ObjectMapperExt.INSTANT
-        );
-        dispatcherPage.setExportColors(exportColors);
-        dispatcherPage.setDebug(debug);
-        dispatcherPage.setIncludeChildren(includeChildren);
-        dispatcherPage.setIncludeAttachments(includeAttachments);
-        dispatcherPage.setFormat(format == null ? OutputFormat.ADOC : format);
-        dispatcherPage.setSkipUnchanged(skipUnchanged);
+            DispatcherPage dispatcherPage = new DispatcherPage(confluenceClient,
+                    targetDir,
+                    ObjectMapperExt.INSTANT
+            );
+            dispatcherPage.setExportColors(exportColors);
+            dispatcherPage.setDebug(debug);
+            dispatcherPage.setIncludeChildren(includeChildren);
+            dispatcherPage.setIncludeAttachments(includeAttachments);
+            dispatcherPage.setFormat(format == null ? OutputFormat.ADOC : format);
+            dispatcherPage.setSkipUnchanged(skipUnchanged);
 
-        try {
-            ProgressCallback progress = (text, step) -> {
-                if (text != null) {
-                    indicator.setText2(text);
-                }
-                indicator.setFraction(indicator.getFraction() + step);
+            try {
+                ProgressCallback progress = (text, step) -> {
+                    if (text != null) {
+                        indicator.setText2(text);
+                    }
+                    indicator.setFraction(indicator.getFraction() + step);
+                    indicator.checkCanceled();
+                };
+                String title = exportSpace
+                        ? dispatcherPage.generateSpace(extractSpaceKey(url), progress)
+                        : dispatcherPage.generate(resolvePageId(confluenceClient, url), progress);
+
                 indicator.checkCanceled();
-            };
-            String title = exportSpace
-                    ? dispatcherPage.generateSpace(extractSpaceKey(url), progress)
-                    : dispatcherPage.generate(resolvePageId(confluenceClient, url), progress);
-
-            indicator.checkCanceled();
-            indicator.setFraction(1.0);
-            return title;
-        } catch (ProcessCanceledException cancel) {
-            throw cancel;
-        } catch (Throwable error) {
-            Path report = BugReportService.getInstance().captureExport(url, dispatcherPage.getDestination(), error);
-            throw withBugReport(error, report);
+                indicator.setFraction(1.0);
+                return title;
+            } catch (ProcessCanceledException cancel) {
+                throw cancel;
+            } catch (Throwable error) {
+                Path report = BugReportService.getInstance().captureExport(url, dispatcherPage.getDestination(), error);
+                throw withBugReport(error, report);
+            }
         }
     }
 
