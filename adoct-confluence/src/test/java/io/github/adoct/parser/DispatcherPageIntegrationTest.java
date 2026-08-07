@@ -572,6 +572,102 @@ public class DispatcherPageIntegrationTest {
         }
     }
 
+    @Test
+    public void unreachableNodeDoesNotBecomeLocalLink() throws IOException {
+        // Родителя «Сироты» нет в выдаче (закрыт правами) — страница не выгружается, значит и
+        // локальной ссылки на неё быть не должно, иначе ссылка вела бы в несуществующий файл
+        OrphanTreeGateway gateway = new OrphanTreeGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("p", (t, v) -> { });
+
+        assertFalse(Files.exists(tmp.resolve("Сирота")));
+        String parent = Files.readString(tmp.resolve("Родитель").resolve("index.adoc")).replace("\r\n", "\n");
+        assertTrue(parent, parent.contains("link:http://confluence/page/Сирота[Сирота]"));
+        // достижимый ребёнок по-прежнему резолвится локально
+        assertTrue(parent, parent.contains("link:Ребёнок/index.adoc[Ребёнок]"));
+    }
+
+    @Test
+    public void bugReportPointsAtThePageThatFailed() {
+        FailingPageGateway gateway = new FailingPageGateway("Страница 1");
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        try {
+            dispatcher.generate("root", (t, v) -> { });
+            org.junit.Assert.fail("выгрузка должна была упасть");
+        } catch (RuntimeException expected) {
+            // ожидаемо
+        }
+
+        // При параллельной выгрузке «текущей» к этому моменту была бы произвольная страница
+        assertEquals("Страница 1", dispatcher.getDestination().getFileName().toString());
+    }
+
+    /** Дерево, где у одной страницы родитель отсутствует в выдаче — она недостижима от корня. */
+    private static class OrphanTreeGateway extends FakeGateway {
+        private final Map<String, String> titles = Map.of("p", "Родитель", "c", "Ребёнок", "o", "Сирота");
+
+        OrphanTreeGateway() {
+            super(null);
+        }
+
+        @Override
+        public List<ConfluenceGateway.PageNode> subtree(String rootId) {
+            return List.of(new ConfluenceGateway.PageNode("c", "Ребёнок", "p", null),
+                    new ConfluenceGateway.PageNode("o", "Сирота", "недоступный-родитель", null));
+        }
+
+        @Override
+        public ContentPage getMainPage(String id) {
+            String title = titles.get(id);
+            String content = "p".equals(id)
+                    ? "<h1>Родитель</h1>" + linkTo("Ребёнок") + linkTo("Сирота")
+                    : "<h1>" + title + "</h1><p>тело</p>";
+            return new ContentPage(title, "http://confluence/" + title, "2024-01-01T00:00:00.000+0000",
+                    content, "<p>view</p>", Map.of());
+        }
+
+        private static String linkTo(String title) {
+            return "<p><ac:link><ri:page ri:content-title=\"" + title + "\"/>"
+                    + "<ac:plain-text-link-body>" + title + "</ac:plain-text-link-body></ac:link></p>";
+        }
+    }
+
+    /** Дерево из трёх страниц, где выгрузка одной из них падает на скачивании вложений. */
+    private static class FailingPageGateway extends FakeGateway {
+        private final String failOn;
+
+        FailingPageGateway(String failOn) {
+            super(null);
+            this.failOn = failOn;
+        }
+
+        @Override
+        public List<ConfluenceGateway.PageNode> subtree(String rootId) {
+            List<ConfluenceGateway.PageNode> nodes = new ArrayList<>();
+            for (int i = 0; i < 3; i++) {
+                nodes.add(new ConfluenceGateway.PageNode("c" + i, "Страница " + i, "root", null));
+            }
+            return nodes;
+        }
+
+        @Override
+        public ContentPage getMainPage(String id) {
+            String title = "root".equals(id) ? "Корень" : "Страница " + id.substring(1);
+            return new ContentPage(title, "http://confluence/" + title, "2024-01-01T00:00:00.000+0000",
+                    "<h1>" + title + "</h1><p>тело</p>", "<p>view</p>",
+                    Map.of("f.pdf", new LinkResult("f.pdf", "/download/f.pdf")));
+        }
+
+        @Override
+        public void loadAttach(Collection<LinkResult> values, Path attachmentFolder, Consumer<String> progress) {
+            if (attachmentFolder.getParent().getFileName().toString().equals(failOn)) {
+                throw new IllegalStateException("не удалось скачать вложение страницы " + failOn);
+            }
+        }
+    }
+
     /**
      * Фейк, умеющий отдать всё поддерево одним пакетом ({@code subtree}) и падающий на попытке
      * обойти дерево по одной странице.

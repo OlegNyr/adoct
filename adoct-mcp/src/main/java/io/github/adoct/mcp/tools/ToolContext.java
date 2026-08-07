@@ -18,6 +18,7 @@ import io.github.adoct.parser.confluence.ConfluenceClient;
 import io.github.adoct.parser.confluence.ContentPage;
 import io.github.adoct.parser.confluence.ObjectMapperExt;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -25,6 +26,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -38,7 +40,7 @@ import java.util.regex.Pattern;
  * <p>Резолв точки подключения: необязательный аргумент {@code host} → {@link EndpointSupplier#forHost(String)},
  * иначе точка по умолчанию. Для «однопроектной» инсталляции есть дефолтные проект Jira и пространство Confluence.
  */
-public final class ToolContext {
+public final class ToolContext implements Closeable {
 
     private static final Pattern PAGE_ID = Pattern.compile("pageId=(\\d+)");
     private static final Pattern DISPLAY = Pattern.compile("/display/([^/?#]+)/([^/?#]+)");
@@ -50,8 +52,8 @@ public final class ToolContext {
 
     private final EndpointSupplier endpoints;
     private final ObjectMapper mapper = ObjectMapperExt.INSTANT;
-    /** Confluence-клиенты по точке подключения ({@code host + token}) — см. {@link #confluence(JsonNode)}. */
-    private final Map<String, ConfluenceClient> confluenceClients = new ConcurrentHashMap<>();
+    /** Confluence-клиенты по хосту — см. {@link #confluence(JsonNode)}. */
+    private final Map<String, CachedConfluence> confluenceClients = new ConcurrentHashMap<>();
 
     public ToolContext(EndpointSupplier endpoints) {
         this.endpoints = endpoints;
@@ -99,8 +101,28 @@ public final class ToolContext {
      */
     public ConfluenceClient confluence(JsonNode args) {
         AtlassianEndpoint ep = endpoint(args, AtlassianKind.CONFLUENCE);
-        return confluenceClients.computeIfAbsent(ep.host() + "\n" + ep.token(),
-                key -> new ConfluenceClient(ep.host(), ep.token()));
+        // Ключ — хост, а не хост+токен: при смене токена старый клиент нужно закрыть, иначе его пул
+        // и поток вытеснения простаивающих соединений остались бы висеть до конца жизни сервера.
+        return confluenceClients.compute(ep.host(), (host, cached) -> {
+            if (cached != null && Objects.equals(cached.token(), ep.token())) {
+                return cached;
+            }
+            if (cached != null) {
+                cached.client().close();
+            }
+            return new CachedConfluence(ep.token(), new ConfluenceClient(host, ep.token()));
+        }).client();
+    }
+
+    /** Клиент Confluence вместе с токеном, на который он выпущен. */
+    private record CachedConfluence(String token, ConfluenceClient client) {
+    }
+
+    /** Закрывает закэшированные клиенты Confluence (их пулы соединений). */
+    @Override
+    public void close() {
+        confluenceClients.values().forEach(cached -> cached.client().close());
+        confluenceClients.clear();
     }
 
     /** Confluence-клиент записи/публикации (generate-движок); по умолчанию — Confluence-хост. */

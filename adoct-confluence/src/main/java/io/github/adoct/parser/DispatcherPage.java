@@ -20,9 +20,11 @@ import io.github.adoct.parser.model.MetadataKey;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -30,12 +32,15 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -94,9 +99,25 @@ public class DispatcherPage {
      */
     @Setter
     private int exportThreads = DEFAULT_EXPORT_THREADS;
-    /** Каталог выгрузки текущей страницы (для баг-репорта при падении). {@code null} до его создания. */
-    @Getter
+    /**
+     * Каталог выгрузки для баг-репорта при падении. При параллельной выгрузке это папка именно той
+     * страницы, которая упала первой: общее «текущая страница» здесь бессмысленно — страниц в работе
+     * несколько, и баг-репорт собрал бы содержимое случайной из них.
+     * <p>
+     * {@code null}, пока ни одна страница не начала выгружаться.
+     */
     private volatile Path destination;
+    /** Папка страницы, на которой выгрузка упала. Побеждает первая ошибка — она же и причина падения. */
+    private final AtomicReference<Path> failedDestination = new AtomicReference<>();
+
+    /**
+     * Каталог для баг-репорта: папка упавшей страницы, если выгрузка упала, иначе — последняя
+     * обработанная (при последовательной выгрузке это одно и то же).
+     */
+    public Path getDestination() {
+        Path failed = failedDestination.get();
+        return failed != null ? failed : destination;
+    }
 
     /** Исполнитель параллельной выгрузки; {@code null} — последовательный режим. */
     private volatile ExecutorService exportExecutor;
@@ -105,6 +126,8 @@ public class DispatcherPage {
 
     /** Степень параллелизма выгрузки по умолчанию. */
     private static final int DEFAULT_EXPORT_THREADS = 4;
+    /** Сколько ждать завершения задач при остановке параллельной выгрузки. */
+    private static final long SHUTDOWN_WAIT_SECONDS = 30L;
 
     /** Карта поддерева: заголовок страницы → её папка относительно корня выгрузки ({@link #basePath}). */
     private final Map<String, Path> pageFolders = new HashMap<>();
@@ -194,13 +217,25 @@ public class DispatcherPage {
         };
     }
 
-    /** Останавливает параллельную выгрузку. Все задачи к этому моменту уже дождались в exportChildren. */
+    /**
+     * Останавливает параллельную выгрузку. Штатно все задачи уже дождались в {@link #awaitAll}, но
+     * закрытие подстраховано {@code shutdownNow} + ожиданием: вызывающий сразу после этого закрывает
+     * HTTP-клиент, и ни одна задача не должна его пережить.
+     */
     private void stopExportPool() {
         ExecutorService executor = exportExecutor;
         exportExecutor = null;
         pageSlots = null;
-        if (executor != null) {
-            executor.shutdown();
+        if (executor == null) {
+            return;
+        }
+        executor.shutdownNow();
+        try {
+            if (!executor.awaitTermination(SHUTDOWN_WAIT_SECONDS, TimeUnit.SECONDS)) {
+                log.warn("Задачи выгрузки не завершились за {} с после остановки", SHUTDOWN_WAIT_SECONDS);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -222,6 +257,7 @@ public class DispatcherPage {
         nodesById.clear();
         userCache.clear();
         searchCache.clear();
+        failedDestination.set(null);
         treeLoaded = false;
         // Ни локальные ссылки, ни обход потомков не нужны — дерево строить незачем.
         if (!crossPageLinks && !includeChildren) {
@@ -230,7 +266,7 @@ public class DispatcherPage {
         progressCallback.next("Строим карту дерева страниц", 0D);
         List<ConfluenceGateway.PageNode> nodes = loadTree(roots, spaceKey);
         if (!nodes.isEmpty()) {
-            buildFromNodes(nodes);
+            buildFromNodes(nodes, roots.stream().map(ConfluenceGateway.PageRef::id).toList());
             treeLoaded = true;
             progressCallback.next("Карта дерева готова: страниц %d".formatted(nodes.size()), 0D);
             return;
@@ -274,45 +310,76 @@ public class DispatcherPage {
 
     /**
      * Разворачивает плоский список узлов в карты папок и детей. Путь папки — цепочка заголовков от
-     * корня; узел, чьего родителя нет в выдаче, считается корневым.
+     * корня.
+     * <p>
+     * В карту ссылок попадают только страницы, <b>достижимые от корней выгрузки</b>. Узел, чьего
+     * родителя нет в выдаче (родитель закрыт правами или выдача оборвалась), экспортироваться не
+     * будет — а если бы он попал в карту, ссылки на него стали бы локальными путями к файлам,
+     * которых на диске нет. Такие узлы просто не резолвятся локально и остаются URL'ами Confluence.
      */
-    private void buildFromNodes(List<ConfluenceGateway.PageNode> nodes) {
+    private void buildFromNodes(List<ConfluenceGateway.PageNode> nodes, List<String> rootIds) {
         Map<String, ConfluenceGateway.PageNode> byId = new HashMap<>();
         for (ConfluenceGateway.PageNode node : nodes) {
             byId.putIfAbsent(node.id(), node);
         }
         nodesById.putAll(byId);
-        Map<String, Path> folders = new HashMap<>();
         for (ConfluenceGateway.PageNode node : nodes) {
-            Path folder = folderOf(node, byId, folders, new HashSet<>());
-            if (crossPageLinks) {
-                pageFolders.putIfAbsent(node.title(), folder);
-                pageIdFolders.putIfAbsent(node.id(), folder);
-            }
             if (node.parentId() != null && byId.containsKey(node.parentId())) {
                 childrenByParent.computeIfAbsent(node.parentId(), k -> new ArrayList<>())
                         .add(new ConfluenceGateway.PageRef(node.id(), node.title()));
             }
         }
-        // Порядок из пакетной выдачи не совпадает с ручной сортировкой страниц в Confluence —
-        // фиксируем его по заголовку, чтобы выгрузка была детерминированной.
-        childrenByParent.values().forEach(list ->
-                list.sort(Comparator.comparing(ConfluenceGateway.PageRef::title, Comparator.nullsLast(String::compareTo))));
+        sortChildren();
+        int reachable = mapReachableFolders(byId, rootIds);
+        if (reachable < byId.size()) {
+            // Не «тихое» усечение: пользователь должен видеть, что часть выдачи в выгрузку не войдёт.
+            log.warn("В дереве {} страниц, достижимо от корней {} — остальные не выгружаются "
+                    + "(родитель закрыт правами или выдача оборвалась)", byId.size(), reachable);
+        }
     }
 
-    /** Путь папки узла с мемоизацией; {@code guard} рвёт цикл, если цепочка предков битая. */
-    private Path folderOf(ConfluenceGateway.PageNode node, Map<String, ConfluenceGateway.PageNode> byId,
-                          Map<String, Path> folders, Set<String> guard) {
-        Path known = folders.get(node.id());
-        if (known != null) {
-            return known;
+    /**
+     * Обходит дерево от корней и раскладывает достижимые страницы по папкам. Возвращает их число —
+     * расхождение с размером выдачи означает недостижимые узлы.
+     */
+    private int mapReachableFolders(Map<String, ConfluenceGateway.PageNode> byId, List<String> rootIds) {
+        Deque<Map.Entry<String, Path>> queue = new ArrayDeque<>();
+        for (String rootId : rootIds) {
+            ConfluenceGateway.PageNode root = byId.get(rootId);
+            if (root != null) {
+                queue.add(Map.entry(rootId, Path.of(sanitizeFolderName(root.title()))));
+            }
         }
-        ConfluenceGateway.PageNode parent = node.parentId() == null ? null : byId.get(node.parentId());
-        Path folder = parent == null || !guard.add(node.id())
-                ? Path.of(sanitizeFolderName(node.title()))
-                : folderOf(parent, byId, folders, guard).resolve(sanitizeFolderName(node.title()));
-        folders.put(node.id(), folder);
-        return folder;
+        Set<String> visited = new HashSet<>();
+        int reachable = 0;
+        while (!queue.isEmpty()) {
+            Map.Entry<String, Path> current = queue.poll();
+            if (!visited.add(current.getKey())) {
+                continue;
+            }
+            reachable++;
+            ConfluenceGateway.PageNode node = byId.get(current.getKey());
+            if (crossPageLinks) {
+                pageFolders.putIfAbsent(node.title(), current.getValue());
+                pageIdFolders.putIfAbsent(node.id(), current.getValue());
+            }
+            for (ConfluenceGateway.PageRef child : childrenByParent.getOrDefault(current.getKey(), List.of())) {
+                queue.add(Map.entry(child.id(),
+                        current.getValue().resolve(sanitizeFolderName(child.title()))));
+            }
+        }
+        return reachable;
+    }
+
+    /**
+     * Единый порядок дочерних страниц — по заголовку. Ни пакетная выдача, ни {@code childPages} не
+     * дают устойчивого порядка между собой, а он виден в выводе (макрос {@code children}): без
+     * сортировки выгрузка одной и той же страницы разными путями давала бы разный результат.
+     */
+    private void sortChildren() {
+        Comparator<ConfluenceGateway.PageRef> byTitle =
+                Comparator.comparing(ConfluenceGateway.PageRef::title, Comparator.nullsLast(String::compareTo));
+        childrenByParent.values().forEach(list -> list.sort(byTitle));
     }
 
     /** Откат: обход дерева по одной странице ({@code childPages} на каждую) — как было до пакетной загрузки. */
@@ -327,6 +394,8 @@ public class DispatcherPage {
             }
             walkSiteMap(root.id(), rootFolder, visited, progressCallback);
         }
+        // Тот же порядок, что и у пакетного пути: иначе выгрузка через откат давала бы другой вывод.
+        sortChildren();
     }
 
     private void walkSiteMap(String id, Path folder, Set<String> visited, ProgressCallback progressCallback) {
@@ -334,8 +403,9 @@ public class DispatcherPage {
             return;
         }
         // В карту кладём детей как есть: для рекурсии нужен только id, заголовок может быть неизвестен
-        // (тогда страница просто не попадёт в карту папок и в макрос children).
-        List<ConfluenceGateway.PageRef> children = client.childPages(id);
+        // (тогда страница просто не попадёт в карту папок и в макрос children). Копия — потому что
+        // гейтвей вправе вернуть неизменяемый список, а sortChildren() сортирует на месте.
+        List<ConfluenceGateway.PageRef> children = new ArrayList<>(client.childPages(id));
         childrenByParent.put(id, children);
         progressCallback.next("Строим карту дерева страниц: %d".formatted(visited.size()), 0D);
         for (ConfluenceGateway.PageRef ref : children) {
@@ -483,6 +553,20 @@ public class DispatcherPage {
             return new PageExport(mainPage.title(), destination, children);
         }
 
+        try {
+            return writePage(id, mainPage, destination, children, progressCallback);
+        } catch (RuntimeException | Error failure) {
+            // Запоминаем папку именно этой страницы: при параллельной выгрузке к моменту, когда
+            // ошибку поймает вызывающий, «текущей» уже будет чужая страница.
+            failedDestination.compareAndSet(null, destination);
+            throw failure;
+        }
+    }
+
+    /** Пишет страницу на диск: вложения, резолв ссылок, конвертация. */
+    @SneakyThrows
+    private PageExport writePage(String id, ContentPage mainPage, Path destination,
+                                 List<ConfluenceGateway.PageRef> children, ProgressCallback progressCallback) {
         Files.createDirectories(destination);
         ConvertStorageToAdoc converter = new ConvertStorageToAdoc(mainPage.content(), mainPage.view(), destination);
         converter.setFormat(format);
@@ -659,31 +743,56 @@ public class DispatcherPage {
         for (ConfluenceGateway.PageRef child : children) {
             tasks.add(executor.submit(() -> export(child.id(), destination, progressCallback)));
         }
-        for (Future<?> task : tasks) {
-            awaitPageTask(task);
-        }
+        awaitAll(tasks);
     }
 
     /**
-     * Ждёт выгрузку дочерней страницы, разворачивая {@link ExecutionException}: наружу должна уйти
-     * исходная ошибка (в том числе отмена прогресса), а не обёртка исполнителя.
+     * Дожидается выгрузку всех дочерних страниц и пробрасывает первую ошибку.
+     * <p>
+     * Ключевое здесь — что метод не возвращает управление, пока жива хоть одна задача. На первой
+     * ошибке (в том числе на отмене пользователем) остальные задачи отменяются с прерыванием, но их
+     * всё равно дожидаются: иначе выгрузка «завершилась бы» при живых потоках, а вызывающий закрыл бы
+     * под ними HTTP-клиент и продолжил писать файлы уже после сообщения об отмене.
      */
-    private static void awaitPageTask(Future<?> task) {
-        try {
-            task.get();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Выгрузка прервана", e);
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause instanceof RuntimeException runtime) {
-                throw runtime;
+    private static void awaitAll(List<Future<?>> tasks) {
+        Throwable failure = null;
+        for (Future<?> task : tasks) {
+            try {
+                task.get();
+            } catch (CancellationException cancelled) {
+                // Задачу отменили мы сами после чужой ошибки — исходную причину уже запомнили.
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                failure = failure != null ? failure : e;
+                cancelPending(tasks);
+            } catch (ExecutionException e) {
+                if (failure == null) {
+                    failure = e.getCause() == null ? e : e.getCause();
+                    cancelPending(tasks);
+                }
             }
-            if (cause instanceof Error error) {
-                throw error;
-            }
-            throw new IllegalStateException(cause);
         }
+        if (failure != null) {
+            throw asUnchecked(failure);
+        }
+    }
+
+    /** Отменяет ещё не завершённые задачи с прерыванием: продолжать выгрузку после ошибки незачем. */
+    private static void cancelPending(List<Future<?>> tasks) {
+        for (Future<?> task : tasks) {
+            task.cancel(true);
+        }
+    }
+
+    /** Разворачивает причину так, чтобы наружу ушла исходная ошибка, а не обёртка исполнителя. */
+    private static RuntimeException asUnchecked(Throwable cause) {
+        if (cause instanceof RuntimeException runtime) {
+            return runtime;
+        }
+        if (cause instanceof Error error) {
+            throw error;
+        }
+        return new IllegalStateException(cause);
     }
 
     /**

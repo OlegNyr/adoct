@@ -1,10 +1,12 @@
 package io.github.adoct.parser.confluence;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.HttpResponseException;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.client.methods.RequestBuilder;
 import org.apache.http.config.Registry;
@@ -47,6 +49,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -73,6 +76,12 @@ public class ConfluenceClient implements ConfluenceGateway, Closeable {
     private static final int ATTACHMENT_PAGE_SIZE = 200;
     /** Сколько вложений качаем одновременно. Не больше пула соединений, иначе задачи просто встанут в очередь. */
     private static final int ATTACHMENT_DOWNLOAD_THREADS = 8;
+    /** Таймаут установки соединения. */
+    private static final int CONNECT_TIMEOUT_MS = 30_000;
+    /** Таймаут молчания сокета: между пакетами ответа, а не на весь ответ — большие вложения не режет. */
+    private static final int SOCKET_TIMEOUT_MS = 60_000;
+    /** Таймаут ожидания свободного соединения в пуле — иначе поток ждал бы его бесконечно. */
+    private static final int CONNECTION_REQUEST_TIMEOUT_MS = 60_000;
 
     private final PoolingHttpClientConnectionManager connectionManager;
     private final CloseableHttpClient httpClient;
@@ -91,8 +100,17 @@ public class ConfluenceClient implements ConfluenceGateway, Closeable {
         connectionManager.setMaxTotal(MAX_CONNECTIONS);
         connectionManager.setDefaultMaxPerRoute(MAX_CONNECTIONS);
 
+        // Без таймаутов застрявший ответ держал бы соединение из общего пула вечно: при параллельной
+        // выгрузке достаточно нескольких таких, чтобы пул кончился и встала вся выгрузка.
+        RequestConfig requestConfig = RequestConfig.custom()
+                .setConnectTimeout(CONNECT_TIMEOUT_MS)
+                .setSocketTimeout(SOCKET_TIMEOUT_MS)
+                .setConnectionRequestTimeout(CONNECTION_REQUEST_TIMEOUT_MS)
+                .build();
+
         httpClient = HttpClients.custom()
                 .setConnectionManager(connectionManager)
+                .setDefaultRequestConfig(requestConfig)
                 .evictIdleConnections(IDLE_EVICT_SECONDS, TimeUnit.SECONDS)
                 .setDefaultHeaders(List.of(new BasicHeader(AUTHORIZATION_HEADER, "Bearer " + token)))
                 .build();
@@ -286,20 +304,28 @@ public class ConfluenceClient implements ConfluenceGateway, Closeable {
                 if (body == null) {
                     break;
                 }
-                int before = nodes.size();
-                for (com.fasterxml.jackson.databind.JsonNode r : ObjectMapperExt.INSTANT.readTree(body).path("results")) {
+                JsonNode root = ObjectMapperExt.INSTANT.readTree(body);
+                // Считаем ВСЕ пришедшие записи, а не только принятые: иначе одна запись без title
+                // сдвинула бы курсор не туда и оборвала пагинацию, молча потеряв хвост дерева.
+                int received = 0;
+                for (JsonNode r : root.path("results")) {
+                    received++;
                     String id = r.path("id").asText(null);
                     String title = r.path("title").asText(null);
                     if (id != null && title != null) {
                         nodes.add(new PageNode(id, title, lastAncestorId(r),
                                 r.path("version").path("when").asText(null)));
+                    } else {
+                        log.warn("Пропущена запись без id/title при чтении дерева страниц ({})", uri);
                     }
                 }
-                int page = nodes.size() - before;
-                if (page < limit) {
+                boolean hasNext = !root.path("_links").path("next").isMissingNode();
+                // Confluence отдаёт _links.next, пока есть продолжение. Полная страница без next —
+                // ровно последняя порция: запрашиваем ещё раз и выходим по пустому ответу.
+                if (received == 0 || (!hasNext && received < limit)) {
                     break;
                 }
-                start += page;
+                start += received;
             }
         } catch (Exception e) {
             log.warn("Не удалось загрузить дерево страниц пакетом ({}): {} — откатываемся на обход по одной",
@@ -310,8 +336,8 @@ public class ConfluenceClient implements ConfluenceGateway, Closeable {
     }
 
     /** Id непосредственного родителя — последний элемент {@code ancestors}; {@code null} для верхнего уровня. */
-    private static String lastAncestorId(com.fasterxml.jackson.databind.JsonNode result) {
-        com.fasterxml.jackson.databind.JsonNode ancestors = result.path("ancestors");
+    private static String lastAncestorId(JsonNode result) {
+        JsonNode ancestors = result.path("ancestors");
         if (!ancestors.isArray() || ancestors.isEmpty()) {
             return null;
         }
@@ -363,7 +389,7 @@ public class ConfluenceClient implements ConfluenceGateway, Closeable {
                 return List.of();
             }
             List<String> labels = new ArrayList<>();
-            for (com.fasterxml.jackson.databind.JsonNode node : ObjectMapperExt.INSTANT.readTree(body).path("results")) {
+            for (JsonNode node : ObjectMapperExt.INSTANT.readTree(body).path("results")) {
                 String name = node.path("name").asText(node.path("label").asText(""));
                 if (!name.isBlank()) {
                     labels.add(name);
@@ -494,7 +520,7 @@ public class ConfluenceClient implements ConfluenceGateway, Closeable {
             return List.of();
         }
         List<PageHit> hits = new ArrayList<>();
-        for (com.fasterxml.jackson.databind.JsonNode r : ObjectMapperExt.INSTANT.readTree(body).path("results")) {
+        for (JsonNode r : ObjectMapperExt.INSTANT.readTree(body).path("results")) {
             String webui = r.path("_links").path("webui").asText(null);
             if (webui != null) {
                 hits.add(new PageHit(r.path("title").asText(null),
@@ -562,7 +588,7 @@ public class ConfluenceClient implements ConfluenceGateway, Closeable {
             return List.of();
         }
         List<Space> spaces = new ArrayList<>();
-        for (com.fasterxml.jackson.databind.JsonNode node : ObjectMapperExt.INSTANT.readTree(body).path("results")) {
+        for (JsonNode node : ObjectMapperExt.INSTANT.readTree(body).path("results")) {
             String key = node.path("key").asText(null);
             if (key != null) {
                 spaces.add(new Space(key, node.path("name").asText(null)));
@@ -639,16 +665,33 @@ public class ConfluenceClient implements ConfluenceGateway, Closeable {
             for (LinkResult value : values) {
                 tasks.add(pool.submit(() -> loadOne(value, attachmentFolder, safeProgress)));
             }
+            RuntimeException abort = null;
             for (Future<?> task : tasks) {
                 try {
                     task.get();
+                } catch (CancellationException cancelled) {
+                    // Задачу сняли мы сами после отмены — причина уже запомнена.
                 } catch (ExecutionException e) {
-                    // Отдельное вложение не должно ронять выгрузку страницы целиком.
-                    log.warn("Ошибка при скачивании вложения: {}", e.getCause().getMessage());
+                    Throwable cause = e.getCause();
+                    // Отмена выгрузки прилетает сюда из прогресс-колбэка как unchecked — её нельзя
+                    // глотать, иначе после нажатия «Отмена» мы продолжим качать. Сбой самого файла
+                    // (проброшенный @SneakyThrows IOException) — наоборот, не должен ронять страницу.
+                    if (cause instanceof RuntimeException runtime) {
+                        if (abort == null) {
+                            abort = runtime;
+                            tasks.forEach(pending -> pending.cancel(true));
+                        }
+                    } else {
+                        log.warn("Ошибка при скачивании вложения: {}",
+                                cause == null ? e.toString() : cause.toString());
+                    }
                 }
             }
+            if (abort != null) {
+                throw abort;
+            }
         } finally {
-            pool.shutdown();
+            pool.shutdownNow();
         }
     }
 

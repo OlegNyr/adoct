@@ -16,6 +16,7 @@ import io.github.adoct.parser.model.LinksUser;
 import io.github.adoct.parser.model.LinksValue;
 import io.github.adoct.parser.model.MetadataKey;
 
+import java.net.URLDecoder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -189,7 +190,11 @@ public class ConvertStorageToAdoc {
         }
         // <img src> встречается в импортированном/вставленном HTML — файл берётся из папки вложений
         for (Element img : document.getElementsByTag("img")) {
-            addIfNotBlank(res, fileNameOf(img.attr("src")));
+            String fileName = fileNameOf(img.attr("src"));
+            addIfNotBlank(res, fileName);
+            // В src имя процентно-закодировано, а во вложениях Confluence лежит как есть: кладём оба
+            // варианта, иначе «план%20схемы.png» не совпал бы с «план схемы.png» и файл бы не скачался.
+            addIfNotBlank(res, urlDecoded(fileName));
         }
         for (Element macro : document.getElementsByTag("ac:structured-macro")) {
             String name = macro.attr("ac:name");
@@ -228,6 +233,18 @@ public class ConvertStorageToAdoc {
         String name = slash >= 0 ? src.substring(slash + 1) : src;
         int query = name.indexOf('?');
         return query >= 0 ? name.substring(0, query) : name;
+    }
+
+    /** Процентно-декодированное имя; {@code null}, если декодировать нечего или строка битая. */
+    private static String urlDecoded(String name) {
+        if (name == null || name.indexOf('%') < 0) {
+            return null;
+        }
+        try {
+            return URLDecoder.decode(name, UTF_8);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private static void addIfNotBlank(Set<String> target, String value) {
