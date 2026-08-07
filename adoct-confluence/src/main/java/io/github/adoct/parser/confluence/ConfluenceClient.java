@@ -68,8 +68,12 @@ import java.util.function.Consumer;
 @Slf4j
 public class ConfluenceClient implements ConfluenceGateway, Closeable {
     private static final String AUTHORIZATION_HEADER = "Authorization";
-    /** Размер пула соединений: с запасом под будущую параллельную выгрузку страниц и вложений. */
-    private static final int MAX_CONNECTIONS = 32;
+    /**
+     * Потолок пула соединений. Соединения создаются по мере надобности, поэтому запас безопасен, а
+     * вот нехватка — нет: при 16 страницах параллельно, каждая со своими загрузками вложений,
+     * запросы вставали бы в очередь и падали по {@link #CONNECTION_REQUEST_TIMEOUT_MS}.
+     */
+    private static final int MAX_CONNECTIONS = 128;
     /** Через сколько выбрасывать простаивающие соединения (Confluence за балансировщиком рвёт их сам). */
     private static final long IDLE_EVICT_SECONDS = 30L;
     /** Размер страницы при постраничном чтении вложений (дефолт Confluence — 25). */
@@ -650,8 +654,8 @@ public class ConfluenceClient implements ConfluenceGateway, Closeable {
      * заметно быстрее последовательных. Степень параллелизма ограничена размером пула, чтобы не
      * упереться в него очередью.
      */
-    private void downloadInParallel(List<LinkResult> values, Path attachmentFolder, Consumer<String> progress)
-            throws InterruptedException {
+    @SneakyThrows
+    private void downloadInParallel(List<LinkResult> values, Path attachmentFolder, Consumer<String> progress) {
         int threads = Math.min(ATTACHMENT_DOWNLOAD_THREADS, values.size());
         // Прогресс уходит в индикатор вызывающего — сериализуем, он не обязан быть потокобезопасным.
         Consumer<String> safeProgress = progress == null ? null : name -> {
@@ -665,33 +669,31 @@ public class ConfluenceClient implements ConfluenceGateway, Closeable {
             for (LinkResult value : values) {
                 tasks.add(pool.submit(() -> loadOne(value, attachmentFolder, safeProgress)));
             }
-            RuntimeException abort = null;
+            // Любой сбой — отмена выгрузки из прогресс-колбэка, 5xx от Confluence, ошибка записи на
+            // диск — должен уронить выгрузку страницы. Молчаливый пропуск давал бы .adoc со ссылкой
+            // на файл, которого нет, и «успешный» экспорт. Недоступное вложение (нет прав, удалено)
+            // сюда не доходит: loadOne отсеивает его по пустому ответу и просто пишет предупреждение.
+            Throwable failure = null;
             for (Future<?> task : tasks) {
                 try {
                     task.get();
-                } catch (CancellationException cancelled) {
-                    // Задачу сняли мы сами после отмены — причина уже запомнена.
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    failure = failure != null ? failure : e;
                 } catch (ExecutionException e) {
-                    Throwable cause = e.getCause();
-                    // Отмена выгрузки прилетает сюда из прогресс-колбэка как unchecked — её нельзя
-                    // глотать, иначе после нажатия «Отмена» мы продолжим качать. Сбой самого файла
-                    // (проброшенный @SneakyThrows IOException) — наоборот, не должен ронять страницу.
-                    if (cause instanceof RuntimeException runtime) {
-                        if (abort == null) {
-                            abort = runtime;
-                            tasks.forEach(pending -> pending.cancel(true));
-                        }
+                    Throwable cause = e.getCause() == null ? e : e.getCause();
+                    if (failure == null) {
+                        failure = cause;
                     } else {
-                        log.warn("Ошибка при скачивании вложения: {}",
-                                cause == null ? e.toString() : cause.toString());
+                        log.warn("Ещё одна ошибка при скачивании вложения: {}", cause.toString());
                     }
                 }
             }
-            if (abort != null) {
-                throw abort;
+            if (failure != null) {
+                throw failure;
             }
         } finally {
-            pool.shutdownNow();
+            pool.shutdown();
         }
     }
 

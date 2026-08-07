@@ -27,16 +27,21 @@ public final class AdoctMcpServer implements AutoCloseable {
     private static final byte[] EMPTY = new byte[0];
 
     private final McpDispatcher dispatcher;
+    /** Реестр, если сервер сам его создал, — его нужно закрыть вместе с сервером. {@code null} иначе. */
+    private final ToolRegistry ownedRegistry;
     private HttpServer httpServer;
 
     /** Сервер из готового списка инструментов (используется CLI, в т.ч. native-сборкой). */
     public AdoctMcpServer(List<McpTool> tools, String serverName, String serverVersion) {
         this.dispatcher = new McpDispatcher(tools, serverName, serverVersion);
+        this.ownedRegistry = null;
     }
 
     /** Удобный конструктор: полный набор инструментов из {@link ToolRegistry} (плагин/JVM). */
     public AdoctMcpServer(EndpointSupplier endpoints, String serverName, String serverVersion) {
-        this(new ToolRegistry(endpoints).tools(), serverName, serverVersion);
+        ToolRegistry registry = new ToolRegistry(endpoints);
+        this.dispatcher = new McpDispatcher(registry.tools(), serverName, serverVersion);
+        this.ownedRegistry = registry;
     }
 
     /** Поднимает HTTP-сервер на {@code host:port}. {@code port == 0} → произвольный свободный порт. */
@@ -67,6 +72,11 @@ public final class AdoctMcpServer implements AutoCloseable {
         if (httpServer != null) {
             httpServer.stop(0);
             httpServer = null;
+        }
+        // Иначе перезапуск сервера (смена настроек MCP) оставлял бы пул соединений и поток
+        // вытеснения от каждого прошлого экземпляра висеть в процессе IDE.
+        if (ownedRegistry != null) {
+            ownedRegistry.close();
         }
     }
 

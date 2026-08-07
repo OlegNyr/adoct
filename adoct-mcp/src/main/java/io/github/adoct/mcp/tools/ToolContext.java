@@ -28,7 +28,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -54,6 +56,8 @@ public final class ToolContext implements Closeable {
     private final ObjectMapper mapper = ObjectMapperExt.INSTANT;
     /** Confluence-клиенты по хосту — см. {@link #confluence(JsonNode)}. */
     private final Map<String, CachedConfluence> confluenceClients = new ConcurrentHashMap<>();
+    /** Все созданные клиенты, включая вытесненные из кэша, — чтобы закрыть их в {@link #close()}. */
+    private final Queue<ConfluenceClient> createdClients = new ConcurrentLinkedQueue<>();
 
     public ToolContext(EndpointSupplier endpoints) {
         this.endpoints = endpoints;
@@ -101,28 +105,33 @@ public final class ToolContext implements Closeable {
      */
     public ConfluenceClient confluence(JsonNode args) {
         AtlassianEndpoint ep = endpoint(args, AtlassianKind.CONFLUENCE);
-        // Ключ — хост, а не хост+токен: при смене токена старый клиент нужно закрыть, иначе его пул
-        // и поток вытеснения простаивающих соединений остались бы висеть до конца жизни сервера.
-        return confluenceClients.compute(ep.host(), (host, cached) -> {
-            if (cached != null && Objects.equals(cached.token(), ep.token())) {
-                return cached;
-            }
-            if (cached != null) {
-                cached.client().close();
-            }
-            return new CachedConfluence(ep.token(), new ConfluenceClient(host, ep.token()));
-        }).client();
+        CachedConfluence cached = confluenceClients.get(ep.host());
+        if (cached != null && Objects.equals(cached.token(), ep.token())) {
+            return cached.client();
+        }
+        // Токен сменился — нужен новый клиент. Старый НЕ закрываем: его мог получить вызов, который
+        // ещё выполняется (выгрузка пространства идёт минутами), и закрытие пула уронило бы его.
+        // Все созданные клиенты закрываются разом в close(), когда сервер останавливают.
+        ConfluenceClient fresh = new ConfluenceClient(ep.host(), ep.token());
+        createdClients.add(fresh);
+        // Строим вне compute: конструктор поднимает SSL-контекст и пул, а держать на это время
+        // блокировку корзины ConcurrentHashMap значило бы блокировать соседние вызовы по тому же хосту.
+        confluenceClients.put(ep.host(), new CachedConfluence(ep.token(), fresh));
+        return fresh;
     }
 
     /** Клиент Confluence вместе с токеном, на который он выпущен. */
     private record CachedConfluence(String token, ConfluenceClient client) {
     }
 
-    /** Закрывает закэшированные клиенты Confluence (их пулы соединений). */
+    /** Закрывает все созданные клиенты Confluence (их пулы соединений и потоки вытеснения). */
     @Override
     public void close() {
-        confluenceClients.values().forEach(cached -> cached.client().close());
         confluenceClients.clear();
+        ConfluenceClient client;
+        while ((client = createdClients.poll()) != null) {
+            client.close();
+        }
     }
 
     /** Confluence-клиент записи/публикации (generate-движок); по умолчанию — Confluence-хост. */

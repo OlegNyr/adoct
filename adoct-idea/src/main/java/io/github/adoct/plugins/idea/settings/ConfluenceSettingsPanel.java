@@ -276,10 +276,10 @@ public class ConfluenceSettingsPanel {
 
         try (ConfluenceClient client = new ConfluenceClient(url, token)) {
             int result = client.verifyToken();
-            if (result != 200) {
+            if (result == 200) {
                 Messages.showInfoMessage("Connection successful!", "Test Connection");
             } else {
-                Messages.showErrorDialog("Failed to verify token", "Test Connection");
+                Messages.showErrorDialog("Failed to verify token (HTTP " + result + ")", "Test Connection");
             }
         } catch (Exception ex) {
             Messages.showErrorDialog("Connection failed: " + ex.getMessage(), "Test Connection");

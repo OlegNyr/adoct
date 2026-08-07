@@ -87,12 +87,18 @@ import java.util.List;
  * {@code tools.jira} и {@code tools.confluence} и собирает из них список {@link McpTool},
  * передавая каждому общий {@link ToolContext}. Добавление инструмента = новый класс + строка здесь.
  */
-public final class ToolRegistry {
+public final class ToolRegistry implements java.io.Closeable {
 
     private final ToolContext ctx;
 
     public ToolRegistry(EndpointSupplier endpoints) {
         this.ctx = new ToolContext(endpoints);
+    }
+
+    /** Освобождает ресурсы контекста — прежде всего пулы соединений закэшированных клиентов. */
+    @Override
+    public void close() {
+        ctx.close();
     }
 
     /**

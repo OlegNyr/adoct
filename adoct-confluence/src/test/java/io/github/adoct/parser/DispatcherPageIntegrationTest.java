@@ -442,14 +442,39 @@ public class DispatcherPageIntegrationTest {
     }
 
     @Test
-    public void bulkTreeReplacesPerPageChildRequests() throws IOException {
+    public void spaceTreeReplacesPerPageChildRequests() throws IOException {
+        // Выборка по пространству — прямая, ей можно доверять как списку детей
+        SpaceBulkTreeGateway gateway = new SpaceBulkTreeGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generateSpace("DOC", (t, v) -> { });
+
+        assertEquals("childPages() не должен вызываться при пакетном дереве пространства",
+                0, gateway.childPagesCalls.get());
+        assertTrue(Files.exists(tmp.resolve("Родитель").resolve("index.adoc")));
+        assertTrue(Files.exists(tmp.resolve("Родитель").resolve("Ребёнок").resolve("index.adoc")));
+    }
+
+    @Test
+    public void subtreeStillAsksForChildrenPerPage() throws IOException {
+        // subtree() — это CQL поверх поискового индекса: он отстаёт и режет глубокую пагинацию,
+        // поэтому список детей берём запросом, а пакетную выдачу — только для карты и версий
         BulkTreeGateway gateway = new BulkTreeGateway();
         DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
 
         dispatcher.generate("p", (t, v) -> { });
 
-        // Дерево пришло одним пакетом — обход по одной странице не нужен ни в пред-проходе, ни в export
-        assertEquals("childPages() не должен вызываться при пакетном дереве", 0, gateway.childPagesCalls.get());
+        assertTrue("дети поддерева должны запрашиваться напрямую", gateway.childPagesCalls.get() > 0);
+        assertTrue(Files.exists(tmp.resolve("Родитель").resolve("Ребёнок").resolve("Внук").resolve("index.adoc")));
+    }
+
+    @Test
+    public void bulkTreeBuildsFoldersAndLocalLinks() throws IOException {
+        BulkTreeGateway gateway = new BulkTreeGateway();
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("p", (t, v) -> { });
+
         Path root = tmp.resolve("Родитель");
         assertTrue(Files.exists(root.resolve("index.adoc")));
         assertTrue(Files.exists(root.resolve("Ребёнок").resolve("index.adoc")));
@@ -563,12 +588,63 @@ public class DispatcherPageIntegrationTest {
                     "<h1>" + title + "</h1><p>тело " + title + "</p>", "<p>view</p>", Map.of());
         }
 
+        @Override
+        public List<ConfluenceGateway.PageRef> childPages(String id) {
+            List<ConfluenceGateway.PageRef> refs = new ArrayList<>();
+            if ("root".equals(id)) {
+                for (int i = 0; i < width; i++) {
+                    refs.add(new ConfluenceGateway.PageRef("c" + i, "Страница " + i));
+                }
+            } else if (id.startsWith("c")) {
+                String index = id.substring(1);
+                refs.add(new ConfluenceGateway.PageRef("g" + index, "Вложенная " + index));
+            }
+            return refs;
+        }
+
         private String titleOf(String id) {
             if ("root".equals(id)) {
                 return "Корень";
             }
             String index = id.substring(1);
             return id.startsWith("c") ? "Страница " + index : "Вложенная " + index;
+        }
+    }
+
+    @Test
+    public void attachmentDownloadFailureAbortsTheExport() {
+        // Молчаливый пропуск давал бы .adoc со ссылкой на несуществующий файл и «успешный» экспорт
+        ContentPage page = new ContentPage("Главная", "http://confluence/Главная", "v1", CONTENT, "<p>view</p>",
+                Map.of("doc.pdf", new LinkResult("doc.pdf", "/download/doc.pdf")));
+        DispatcherPage dispatcher = new DispatcherPage(new BrokenAttachmentGateway(page), tmp,
+                ObjectMapperExt.INSTANT);
+
+        try {
+            dispatcher.generate("123", (t, v) -> { });
+            org.junit.Assert.fail("сбой скачивания вложения должен ронять выгрузку");
+        } catch (RuntimeException expected) {
+            assertTrue(expected.toString(), rootCauseMessage(expected).contains("502"));
+        }
+    }
+
+    private static String rootCauseMessage(Throwable error) {
+        Throwable cause = error;
+        while (cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return String.valueOf(cause.getMessage());
+    }
+
+    /** Фейк, у которого скачивание вложения падает как при 5xx от Confluence. */
+    private static class BrokenAttachmentGateway extends FakeGateway {
+        BrokenAttachmentGateway(ContentPage page) {
+            super(page);
+        }
+
+        @Override
+        public void loadAttach(Collection<LinkResult> values, Path attachmentFolder, Consumer<String> progress) {
+            super.loadAttach(values, attachmentFolder, progress);
+            throw new IllegalStateException("Confluence ответил 502 на " + values.iterator().next().title());
         }
     }
 
@@ -628,6 +704,11 @@ public class DispatcherPageIntegrationTest {
                     content, "<p>view</p>", Map.of());
         }
 
+        @Override
+        public List<ConfluenceGateway.PageRef> childPages(String id) {
+            return "p".equals(id) ? List.of(new ConfluenceGateway.PageRef("c", "Ребёнок")) : List.of();
+        }
+
         private static String linkTo(String title) {
             return "<p><ac:link><ri:page ri:content-title=\"" + title + "\"/>"
                     + "<ac:plain-text-link-body>" + title + "</ac:plain-text-link-body></ac:link></p>";
@@ -658,6 +739,18 @@ public class DispatcherPageIntegrationTest {
             return new ContentPage(title, "http://confluence/" + title, "2024-01-01T00:00:00.000+0000",
                     "<h1>" + title + "</h1><p>тело</p>", "<p>view</p>",
                     Map.of("f.pdf", new LinkResult("f.pdf", "/download/f.pdf")));
+        }
+
+        @Override
+        public List<ConfluenceGateway.PageRef> childPages(String id) {
+            if (!"root".equals(id)) {
+                return List.of();
+            }
+            List<ConfluenceGateway.PageRef> refs = new ArrayList<>();
+            for (int i = 0; i < 3; i++) {
+                refs.add(new ConfluenceGateway.PageRef("c" + i, "Страница " + i));
+            }
+            return refs;
         }
 
         @Override
@@ -704,7 +797,34 @@ public class DispatcherPageIntegrationTest {
         @Override
         public List<ConfluenceGateway.PageRef> childPages(String id) {
             childPagesCalls.incrementAndGet();
-            throw new AssertionError("childPages() вызван, хотя дерево получено пакетом: " + id);
+            return switch (id) {
+                case "p" -> List.of(new ConfluenceGateway.PageRef("c", "Ребёнок"));
+                case "c" -> List.of(new ConfluenceGateway.PageRef("g", "Внук"));
+                default -> List.of();
+            };
+        }
+    }
+
+    /**
+     * То же дерево, но отданное как выборка по пространству: ей доверяем как полному списку детей,
+     * поэтому {@code childPages} не должен вызываться вовсе.
+     */
+    private static class SpaceBulkTreeGateway extends BulkTreeGateway {
+        @Override
+        public List<ConfluenceGateway.PageRef> spaceRootPages(String spaceKey) {
+            return List.of(new ConfluenceGateway.PageRef("p", "Родитель"));
+        }
+
+        @Override
+        public List<ConfluenceGateway.PageNode> spaceTree(String spaceKey) {
+            return List.of(new ConfluenceGateway.PageNode("p", "Родитель", null, version),
+                    new ConfluenceGateway.PageNode("c", "Ребёнок", "p", version));
+        }
+
+        @Override
+        public List<ConfluenceGateway.PageRef> childPages(String id) {
+            childPagesCalls.incrementAndGet();
+            throw new AssertionError("childPages() вызван, хотя дерево пространства получено пакетом: " + id);
         }
     }
 

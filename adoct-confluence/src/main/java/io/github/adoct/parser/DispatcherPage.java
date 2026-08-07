@@ -109,6 +109,8 @@ public class DispatcherPage {
     private volatile Path destination;
     /** Папка страницы, на которой выгрузка упала. Побеждает первая ошибка — она же и причина падения. */
     private final AtomicReference<Path> failedDestination = new AtomicReference<>();
+    /** Мониторы по каталогу назначения — см. {@link #folderLock}. */
+    private final Map<String, Object> folderLocks = new ConcurrentHashMap<>();
 
     /**
      * Каталог для баг-репорта: папка упавшей страницы, если выгрузка упала, иначе — последняя
@@ -123,6 +125,12 @@ public class DispatcherPage {
     private volatile ExecutorService exportExecutor;
     /** Ограничитель одновременно выгружаемых страниц — см. {@link #exportSelfWithSlot}. */
     private volatile Semaphore pageSlots;
+    /**
+     * Выгрузка прервана (ошибка или отмена) — ещё не начатые задачи должны выйти сразу.
+     * Кооперативный флаг вместо прерывания потоков: страница пишет файлы, и обрывать её посередине
+     * хуже, чем дать доиграть.
+     */
+    private volatile boolean aborted;
 
     /** Степень параллелизма выгрузки по умолчанию. */
     private static final int DEFAULT_EXPORT_THREADS = 4;
@@ -151,10 +159,16 @@ public class DispatcherPage {
     /** То же для поиска страницы по заголовку: ключ — {@code заголовок + пространство}. */
     private final Map<String, Optional<LinkResult>> searchCache = new ConcurrentHashMap<>();
     /**
-     * Пред-проход собрал полное дерево — значит {@link #export} берёт детей из {@link #childrenByParent},
-     * а не запрашивает {@code childPages} на каждую страницу заново.
+     * Список детей из пред-прохода можно считать полным — тогда {@link #export} берёт их из
+     * {@link #childrenByParent}, а не запрашивает {@code childPages} на каждую страницу.
+     * <p>
+     * Полным считается результат {@code /space/{key}/content/page} (прямая выборка контента) и обхода
+     * по {@code childPages}. Выдача {@code subtree()} — <b>нет</b>: это CQL поверх поискового индекса,
+     * который отстаёт при создании/переносе страниц и режет глубокую пагинацию. Потерянная там ветка
+     * не выгрузилась бы целиком и молча, поэтому для поддерева детей берём запросом, а пакетную
+     * выдачу используем только для карты ссылок и версий.
      */
-    private boolean treeLoaded;
+    private boolean childrenComplete;
 
     /** Ищет записанную версию в заголовке ({@code :confluency-version:} adoc / {@code confluency-version:} md). */
     private static final Pattern VERSION_LINE = Pattern.compile("(?m)^:?confluency-version:\\s*(.+)$");
@@ -210,6 +224,7 @@ public class DispatcherPage {
         }
         exportExecutor = Executors.newVirtualThreadPerTaskExecutor();
         pageSlots = new Semaphore(exportThreads);
+        aborted = false;
         return (text, step) -> {
             synchronized (this) {
                 progressCallback.next(text, step);
@@ -218,18 +233,22 @@ public class DispatcherPage {
     }
 
     /**
-     * Останавливает параллельную выгрузку. Штатно все задачи уже дождались в {@link #awaitAll}, но
-     * закрытие подстраховано {@code shutdownNow} + ожиданием: вызывающий сразу после этого закрывает
-     * HTTP-клиент, и ни одна задача не должна его пережить.
+     * Останавливает параллельную выгрузку. Штатно все задачи уже дождались в {@link #awaitAll}; здесь
+     * это подтверждается ожиданием завершения, потому что вызывающий сразу после этого закрывает
+     * HTTP-клиент и ни одна задача не должна его пережить.
+     * <p>
+     * {@code shutdown()}, а не {@code shutdownNow()}: прерывать страницу посередине записи хуже, чем
+     * дождаться её — а ждать нечего, если {@link #awaitAll} отработал.
      */
     private void stopExportPool() {
         ExecutorService executor = exportExecutor;
         exportExecutor = null;
         pageSlots = null;
+        aborted = true;
         if (executor == null) {
             return;
         }
-        executor.shutdownNow();
+        executor.shutdown();
         try {
             if (!executor.awaitTermination(SHUTDOWN_WAIT_SECONDS, TimeUnit.SECONDS)) {
                 log.warn("Задачи выгрузки не завершились за {} с после остановки", SHUTDOWN_WAIT_SECONDS);
@@ -257,8 +276,9 @@ public class DispatcherPage {
         nodesById.clear();
         userCache.clear();
         searchCache.clear();
+        folderLocks.clear();
         failedDestination.set(null);
-        treeLoaded = false;
+        childrenComplete = false;
         // Ни локальные ссылки, ни обход потомков не нужны — дерево строить незачем.
         if (!crossPageLinks && !includeChildren) {
             return;
@@ -267,12 +287,13 @@ public class DispatcherPage {
         List<ConfluenceGateway.PageNode> nodes = loadTree(roots, spaceKey);
         if (!nodes.isEmpty()) {
             buildFromNodes(nodes, roots.stream().map(ConfluenceGateway.PageRef::id).toList());
-            treeLoaded = true;
+            // Полный список детей даёт только выборка по пространству; CQL-поддерево — нет.
+            childrenComplete = spaceKey != null;
             progressCallback.next("Карта дерева готова: страниц %d".formatted(nodes.size()), 0D);
             return;
         }
         walkSiteMap(roots, progressCallback);
-        treeLoaded = true;
+        childrenComplete = true;
         progressCallback.next("Карта дерева готова: страниц %d".formatted(pageIdFolders.size()), 0D);
     }
 
@@ -372,9 +393,12 @@ public class DispatcherPage {
     }
 
     /**
-     * Единый порядок дочерних страниц — по заголовку. Ни пакетная выдача, ни {@code childPages} не
-     * дают устойчивого порядка между собой, а он виден в выводе (макрос {@code children}): без
-     * сортировки выгрузка одной и той же страницы разными путями давала бы разный результат.
+     * Сортировка дочерних страниц по заголовку — <b>только</b> для пакетной выдачи.
+     * <p>
+     * {@code /child/page} отдаёт детей в ручном порядке, который автор задал в Confluence: он виден
+     * читателю и переносится в макрос {@code children} как есть, поэтому в обходе-откате порядок не
+     * трогаем. У пакетной выдачи такого порядка нет, и без сортировки он был бы произвольным —
+     * отсюда расхождение между двумя путями, осознанное и неустранимое без запроса на страницу.
      */
     private void sortChildren() {
         Comparator<ConfluenceGateway.PageRef> byTitle =
@@ -394,8 +418,6 @@ public class DispatcherPage {
             }
             walkSiteMap(root.id(), rootFolder, visited, progressCallback);
         }
-        // Тот же порядок, что и у пакетного пути: иначе выгрузка через откат давала бы другой вывод.
-        sortChildren();
     }
 
     private void walkSiteMap(String id, Path folder, Set<String> visited, ProgressCallback progressCallback) {
@@ -424,9 +446,9 @@ public class DispatcherPage {
         }
     }
 
-    /** Прямые дети страницы: из дерева пред-прохода, иначе — запросом. */
+    /** Прямые дети страницы: из дерева пред-прохода, если оно заведомо полное, иначе — запросом. */
     private List<ConfluenceGateway.PageRef> childrenOf(String id) {
-        return treeLoaded ? childrenByParent.getOrDefault(id, List.of()) : client.childPages(id);
+        return childrenComplete ? childrenByParent.getOrDefault(id, List.of()) : client.childPages(id);
     }
 
     /**
@@ -512,6 +534,9 @@ public class DispatcherPage {
      */
     private String export(String id, Path baseDir, ProgressCallback progressCallback) {
         PageExport page = exportSelfWithSlot(id, baseDir, progressCallback);
+        if (page == null) {
+            return null;
+        }
         exportChildren(page.children(), page.destination(), progressCallback);
         return page.title();
     }
@@ -520,7 +545,10 @@ public class DispatcherPage {
     private record PageExport(String title, Path destination, List<ConfluenceGateway.PageRef> children) {
     }
 
-    /** Выгружает саму страницу, заняв слот параллелизма (если параллельный режим включён). */
+    /**
+     * Выгружает саму страницу, заняв слот параллелизма (если параллельный режим включён).
+     * {@code null} — выгрузка была прервана, пока задача ждала слот.
+     */
     private PageExport exportSelfWithSlot(String id, Path baseDir, ProgressCallback progressCallback) {
         Semaphore slots = pageSlots;
         if (slots == null) {
@@ -528,7 +556,8 @@ public class DispatcherPage {
         }
         slots.acquireUninterruptibly();
         try {
-            return exportSelf(id, baseDir, progressCallback);
+            // Ожидание слота может быть долгим — за это время выгрузку могли прервать.
+            return aborted ? null : exportSelf(id, baseDir, progressCallback);
         } finally {
             slots.release();
         }
@@ -554,13 +583,24 @@ public class DispatcherPage {
         }
 
         try {
-            return writePage(id, mainPage, destination, children, progressCallback);
-        } catch (RuntimeException | Error failure) {
+            // Страницы с совпадающим именем папки (sanitize необратим: «CI/CD» и «CI_CD» дают одно
+            // и то же) пишутся по очереди — параллельно они затирали бы файлы друг друга.
+            synchronized (folderLock(destination)) {
+                return writePage(id, mainPage, destination, children, progressCallback);
+            }
+        } catch (Throwable failure) {
+            // Ловим Throwable, а не RuntimeException: writePage помечен @SneakyThrows и реально
+            // бросает checked-исключения (например FileSystemException при слишком длинном пути).
             // Запоминаем папку именно этой страницы: при параллельной выгрузке к моменту, когда
             // ошибку поймает вызывающий, «текущей» уже будет чужая страница.
             failedDestination.compareAndSet(null, destination);
             throw failure;
         }
+    }
+
+    /** Монитор на каталог назначения — общий для страниц, чьи заголовки дали одно имя папки. */
+    private Object folderLock(Path destination) {
+        return folderLocks.computeIfAbsent(destination.toString(), key -> new Object());
     }
 
     /** Пишет страницу на диск: вложения, резолв ссылок, конвертация. */
@@ -580,6 +620,11 @@ public class DispatcherPage {
         }
 
         Path attachmentFolder = destination.resolve("attache");
+        if (onlyUsedAttachments && Files.exists(attachmentFolder)) {
+            // Иначе фильтр только запрещал бы новые загрузки: вложения, скачанные прошлым прогоном
+            // (в том числе до включения фильтра), остались бы лежать — а обещано обратное.
+            FileUtils.cleanDirectory(attachmentFolder.toFile());
+        }
         Files.createDirectories(attachmentFolder);
 
         if (includeAttachments) {
@@ -741,7 +786,12 @@ public class DispatcherPage {
         }
         List<Future<?>> tasks = new ArrayList<>(children.size());
         for (ConfluenceGateway.PageRef child : children) {
-            tasks.add(executor.submit(() -> export(child.id(), destination, progressCallback)));
+            tasks.add(executor.submit(() -> {
+                // Ранний выход для ещё не начатых задач: после ошибки продолжать выгрузку незачем.
+                if (!aborted) {
+                    export(child.id(), destination, progressCallback);
+                }
+            }));
         }
         awaitAll(tasks);
     }
@@ -749,38 +799,38 @@ public class DispatcherPage {
     /**
      * Дожидается выгрузку всех дочерних страниц и пробрасывает первую ошибку.
      * <p>
-     * Ключевое здесь — что метод не возвращает управление, пока жива хоть одна задача. На первой
-     * ошибке (в том числе на отмене пользователем) остальные задачи отменяются с прерыванием, но их
-     * всё равно дожидаются: иначе выгрузка «завершилась бы» при живых потоках, а вызывающий закрыл бы
-     * под ними HTTP-клиент и продолжил писать файлы уже после сообщения об отмене.
+     * Метод не возвращает управление, пока жива хоть одна задача, — иначе выгрузка «завершилась бы»
+     * при работающих потоках, а вызывающий закрыл бы под ними HTTP-клиент и продолжил писать файлы
+     * уже после сообщения об отмене.
+     * <p>
+     * Именно поэтому здесь <b>нет</b> {@code Future.cancel}: отменённая задача отдаёт
+     * {@link CancellationException} из {@code get()} сразу, хотя её тело ещё выполняется, — то есть
+     * отмена как раз и ломала бы ожидание. Вместо этого выставляется флаг {@link #aborted}: ещё не
+     * начатые задачи выходят сразу, начатые доигрывают текущую страницу, и {@code get()} для каждой
+     * возвращается честно.
      */
-    private static void awaitAll(List<Future<?>> tasks) {
+    private void awaitAll(List<Future<?>> tasks) {
         Throwable failure = null;
         for (Future<?> task : tasks) {
             try {
                 task.get();
-            } catch (CancellationException cancelled) {
-                // Задачу отменили мы сами после чужой ошибки — исходную причину уже запомнили.
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                aborted = true;
                 failure = failure != null ? failure : e;
-                cancelPending(tasks);
             } catch (ExecutionException e) {
+                Throwable cause = e.getCause() == null ? e : e.getCause();
+                aborted = true;
                 if (failure == null) {
-                    failure = e.getCause() == null ? e : e.getCause();
-                    cancelPending(tasks);
+                    failure = cause;
+                } else {
+                    // Наружу уйдёт только первая ошибка — остальные иначе пропали бы бесследно.
+                    log.warn("Ещё одна ошибка при выгрузке страницы: {}", cause.toString());
                 }
             }
         }
         if (failure != null) {
             throw asUnchecked(failure);
-        }
-    }
-
-    /** Отменяет ещё не завершённые задачи с прерыванием: продолжать выгрузку после ошибки незачем. */
-    private static void cancelPending(List<Future<?>> tasks) {
-        for (Future<?> task : tasks) {
-            task.cancel(true);
         }
     }
 

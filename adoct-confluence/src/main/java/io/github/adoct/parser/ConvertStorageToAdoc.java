@@ -241,7 +241,9 @@ public class ConvertStorageToAdoc {
             return null;
         }
         try {
-            return URLDecoder.decode(name, UTF_8);
+            // URLDecoder работает по правилам form-urlencoded, где «+» значит пробел. В имени файла
+            // «+» — обычный символ («отчёт v1+2.png»), поэтому экранируем его перед декодированием.
+            return URLDecoder.decode(name.replace("+", "%2B"), UTF_8);
         } catch (IllegalArgumentException e) {
             return null;
         }
