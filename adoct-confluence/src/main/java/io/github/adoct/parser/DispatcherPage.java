@@ -28,7 +28,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -71,16 +78,30 @@ public class DispatcherPage {
      */
     @Setter
     private boolean crossPageLinks = true;
+    /**
+     * Сколько страниц выгружать одновременно. {@code 1} — последовательно, как раньше. Страницы
+     * независимы (своя папка, свой конвертер), а узкое место — сеть, поэтому по умолчанию несколько.
+     */
+    @Setter
+    private int exportThreads = DEFAULT_EXPORT_THREADS;
     /** Каталог выгрузки текущей страницы (для баг-репорта при падении). {@code null} до его создания. */
     @Getter
-    private Path destination;
+    private volatile Path destination;
+
+    /** Исполнитель параллельной выгрузки; {@code null} — последовательный режим. */
+    private volatile ExecutorService exportExecutor;
+    /** Ограничитель одновременно выгружаемых страниц — см. {@link #exportSelfWithSlot}. */
+    private volatile Semaphore pageSlots;
+
+    /** Степень параллелизма выгрузки по умолчанию. */
+    private static final int DEFAULT_EXPORT_THREADS = 4;
 
     /** Карта поддерева: заголовок страницы → её папка относительно корня выгрузки ({@link #basePath}). */
     private final Map<String, Path> pageFolders = new HashMap<>();
     /** То же поддерево, но по id страницы — ссылки в теле чаще всего идут именно по {@code pageId}. */
     private final Map<String, Path> pageIdFolders = new HashMap<>();
     /** Корневые страницы, загруженные в пред-проходе для карты дерева — переиспользуются в export. */
-    private final Map<String, ContentPage> prefetched = new HashMap<>();
+    private final Map<String, ContentPage> prefetched = new ConcurrentHashMap<>();
     /** Дерево выгрузки: id страницы → её прямые дети. Заполняется пред-проходом. */
     private final Map<String, List<ConfluenceGateway.PageRef>> childrenByParent = new HashMap<>();
     /**
@@ -88,6 +109,14 @@ public class DispatcherPage {
      * неизменившуюся страницу, не скачивая её тело и вложения. Заполняется только пакетным пред-проходом.
      */
     private final Map<String, ConfluenceGateway.PageNode> nodesById = new HashMap<>();
+    /**
+     * Кэш резолва пользователей на весь прогон: один и тот же автор встречается на сотнях страниц, а
+     * REST-вызов на него уходил каждый раз. Пустой {@link Optional} — «не нашли», тоже кэшируем,
+     * иначе ненайденный пользователь стоил бы запроса на каждой странице.
+     */
+    private final Map<String, Optional<LinkResult>> userCache = new ConcurrentHashMap<>();
+    /** То же для поиска страницы по заголовку: ключ — {@code заголовок + пространство}. */
+    private final Map<String, Optional<LinkResult>> searchCache = new ConcurrentHashMap<>();
     /**
      * Пред-проход собрал полное дерево — значит {@link #export} берёт детей из {@link #childrenByParent},
      * а не запрашивает {@code childPages} на каждую страницу заново.
@@ -103,8 +132,13 @@ public class DispatcherPage {
      */
     @SneakyThrows
     public String generate(String id, ProgressCallback progressCallback) {
-        buildSiteMap(List.of(new ConfluenceGateway.PageRef(id, null)), null, progressCallback);
-        return export(id, basePath, progressCallback);
+        ProgressCallback progress = startExportPool(progressCallback);
+        try {
+            buildSiteMap(List.of(new ConfluenceGateway.PageRef(id, null)), null, progress);
+            return export(id, basePath, progress);
+        } finally {
+            stopExportPool();
+        }
     }
 
     /**
@@ -117,11 +151,47 @@ public class DispatcherPage {
         if (roots.isEmpty()) {
             throw new IllegalArgumentException("В пространстве %s нет страниц (или нет доступа)".formatted(spaceKey));
         }
-        buildSiteMap(roots, spaceKey, progressCallback);
-        for (ConfluenceGateway.PageRef root : roots) {
-            export(root.id(), basePath, progressCallback);
+        ProgressCallback progress = startExportPool(progressCallback);
+        try {
+            buildSiteMap(roots, spaceKey, progress);
+            exportChildren(roots, basePath, progress);
+        } finally {
+            stopExportPool();
         }
         return spaceKey;
+    }
+
+    /**
+     * Готовит параллельную выгрузку и возвращает прогресс-колбэк, безопасный для вызова из нескольких
+     * потоков (индикатор вызывающего этого не обязан уметь). При {@code exportThreads <= 1} —
+     * последовательный режим и исходный колбэк без обёртки.
+     * <p>
+     * Потоки виртуальные: обход дерева рекурсивный, и родитель ждёт детей — на пуле обычных потоков
+     * это упёрлось бы в его размер. Одновременную нагрузку ограничивает {@link #pageSlots}.
+     */
+    private ProgressCallback startExportPool(ProgressCallback progressCallback) {
+        if (exportThreads <= 1) {
+            exportExecutor = null;
+            pageSlots = null;
+            return progressCallback;
+        }
+        exportExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        pageSlots = new Semaphore(exportThreads);
+        return (text, step) -> {
+            synchronized (this) {
+                progressCallback.next(text, step);
+            }
+        };
+    }
+
+    /** Останавливает параллельную выгрузку. Все задачи к этому моменту уже дождались в exportChildren. */
+    private void stopExportPool() {
+        ExecutorService executor = exportExecutor;
+        exportExecutor = null;
+        pageSlots = null;
+        if (executor != null) {
+            executor.shutdown();
+        }
     }
 
     /**
@@ -140,6 +210,8 @@ public class DispatcherPage {
         prefetched.clear();
         childrenByParent.clear();
         nodesById.clear();
+        userCache.clear();
+        searchCache.clear();
         treeLoaded = false;
         // Ни локальные ссылки, ни обход потомков не нужны — дерево строить незачем.
         if (!crossPageLinks && !includeChildren) {
@@ -353,9 +425,38 @@ public class DispatcherPage {
         return out;
     }
 
-    @SneakyThrows
+    /**
+     * Выгружает страницу и её поддерево. Своя работа страницы и обход потомков разделены намеренно:
+     * при параллельной выгрузке слот занимается только на свою работу и освобождается до ожидания
+     * детей — иначе родители заняли бы все слоты, ожидая детей, которым слотов уже не досталось.
+     */
     private String export(String id, Path baseDir, ProgressCallback progressCallback) {
-        String skipped = skipUnchangedWithoutLoading(id, baseDir, progressCallback);
+        PageExport page = exportSelfWithSlot(id, baseDir, progressCallback);
+        exportChildren(page.children(), page.destination(), progressCallback);
+        return page.title();
+    }
+
+    /** Результат выгрузки самой страницы — без её потомков. */
+    private record PageExport(String title, Path destination, List<ConfluenceGateway.PageRef> children) {
+    }
+
+    /** Выгружает саму страницу, заняв слот параллелизма (если параллельный режим включён). */
+    private PageExport exportSelfWithSlot(String id, Path baseDir, ProgressCallback progressCallback) {
+        Semaphore slots = pageSlots;
+        if (slots == null) {
+            return exportSelf(id, baseDir, progressCallback);
+        }
+        slots.acquireUninterruptibly();
+        try {
+            return exportSelf(id, baseDir, progressCallback);
+        } finally {
+            slots.release();
+        }
+    }
+
+    @SneakyThrows
+    private PageExport exportSelf(String id, Path baseDir, ProgressCallback progressCallback) {
+        PageExport skipped = skipUnchangedWithoutLoading(id, baseDir, progressCallback);
         if (skipped != null) {
             return skipped;
         }
@@ -369,8 +470,7 @@ public class DispatcherPage {
         // Инкрементально: не изменившуюся страницу пропускаем, но детей всё равно обходим.
         if (skipUnchanged && isUnchanged(destination, mainPage.date())) {
             progressCallback.next("Пропуск (не изменилась): %s".formatted(mainPage.title()), 0.2D);
-            exportChildren(children, destination, progressCallback);
-            return mainPage.title();
+            return new PageExport(mainPage.title(), destination, children);
         }
 
         Files.createDirectories(destination);
@@ -450,8 +550,7 @@ public class DispatcherPage {
         deleteIfEmpty(filesDirectory);
         deleteIfEmpty(attachmentFolder);
 
-        exportChildren(children, destination, progressCallback);
-        return mainPage.title();
+        return new PageExport(mainPage.title(), destination, children);
     }
 
     /**
@@ -507,11 +606,47 @@ public class DispatcherPage {
                 .toList();
     }
 
-    /** Рекурсивно выгружает дочерние страницы в подпапки текущей. */
+    /**
+     * Рекурсивно выгружает дочерние страницы в подпапки текущей — параллельно, если включён
+     * {@link #exportThreads} > 1 (страницы независимы: у каждой своя папка и свой конвертер).
+     */
     private void exportChildren(List<ConfluenceGateway.PageRef> children, Path destination,
                                 ProgressCallback progressCallback) {
+        ExecutorService executor = exportExecutor;
+        if (executor == null || children.size() < 2) {
+            for (ConfluenceGateway.PageRef child : children) {
+                export(child.id(), destination, progressCallback);
+            }
+            return;
+        }
+        List<Future<?>> tasks = new ArrayList<>(children.size());
         for (ConfluenceGateway.PageRef child : children) {
-            export(child.id(), destination, progressCallback);
+            tasks.add(executor.submit(() -> export(child.id(), destination, progressCallback)));
+        }
+        for (Future<?> task : tasks) {
+            awaitPageTask(task);
+        }
+    }
+
+    /**
+     * Ждёт выгрузку дочерней страницы, разворачивая {@link ExecutionException}: наружу должна уйти
+     * исходная ошибка (в том числе отмена прогресса), а не обёртка исполнителя.
+     */
+    private static void awaitPageTask(Future<?> task) {
+        try {
+            task.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Выгрузка прервана", e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            throw new IllegalStateException(cause);
         }
     }
 
@@ -522,7 +657,7 @@ public class DispatcherPage {
      * <p>
      * Дети всё равно обходятся — каждый проверяется отдельно.
      */
-    private String skipUnchangedWithoutLoading(String id, Path baseDir, ProgressCallback progressCallback) {
+    private PageExport skipUnchangedWithoutLoading(String id, Path baseDir, ProgressCallback progressCallback) {
         if (!skipUnchanged) {
             return null;
         }
@@ -536,8 +671,7 @@ public class DispatcherPage {
         }
         this.destination = destination;
         progressCallback.next("Пропуск (не изменилась): %s".formatted(node.title()), 0.2D);
-        exportChildren(includeChildren ? childrenOf(id) : List.of(), destination, progressCallback);
-        return node.title();
+        return new PageExport(node.title(), destination, includeChildren ? childrenOf(id) : List.of());
     }
 
     /**
@@ -609,7 +743,7 @@ public class DispatcherPage {
             }
             // нерезолвленную ссылку в карту не кладём: writer отрисует её плейсхолдером, а не NPE-ит
             switch (link) {
-                case LinksUser user -> putIfResolved(linksResolvers, link, client.user(user.userKey()));
+                case LinksUser user -> putIfResolved(linksResolvers, link, resolveUser(user.userKey()));
                 case LinksPage page -> putIfResolved(linksResolvers, link,
                         resolveLink(page, resolveView, currentFolder));
                 case LinksAttachment pageAttachment -> putIfResolved(linksResolvers, link,
@@ -643,14 +777,31 @@ public class DispatcherPage {
         if (url != null) {
             return new LinkResult(page.title(), pageUrl(url, currentFolder));
         }
-        List<LinkResult> found = client.search(page.title(), page.space());
-        if (found.isEmpty()) {
-            log.warn("Страница «{}» (space={}) не найдена — ссылка остаётся нерезолвленной",
-                    page.title(), page.space());
+        LinkResult hit = searchPage(page.title(), page.space());
+        if (hit == null) {
             return null;
         }
-        LinkResult hit = found.getFirst();
         return new LinkResult(hit.title(), pageUrl(hit.url(), currentFolder));
+    }
+
+    /**
+     * Поиск страницы по заголовку с кэшем на весь прогон. Кэшируется «сырая» находка, а не готовая
+     * ссылка: путь до неё зависит от папки страницы, с которой ссылаются.
+     */
+    private LinkResult searchPage(String title, String space) {
+        return searchCache.computeIfAbsent(title + ' ' + space, key -> {
+            List<LinkResult> found = client.search(title, space);
+            if (found.isEmpty()) {
+                log.warn("Страница «{}» (space={}) не найдена — ссылка остаётся нерезолвленной", title, space);
+                return Optional.empty();
+            }
+            return Optional.of(found.getFirst());
+        }).orElse(null);
+    }
+
+    /** Резолв пользователя по ключу с кэшем на весь прогон. */
+    private LinkResult resolveUser(String userKey) {
+        return userCache.computeIfAbsent(userKey, key -> Optional.ofNullable(client.user(key))).orElse(null);
     }
 
     /**

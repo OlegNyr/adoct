@@ -40,6 +40,8 @@ public class ConvertStorageToAdoc {
     private final Document document;
     private final String view;
     private final Path destination;
+    /** Лениво разобранный {@link #view} — см. {@link #viewDocument()}. */
+    private Document viewDocument;
     /** Дублировать ли вывод в stdout (отладка). По умолчанию выключено. */
     @Setter
     @Getter
@@ -84,9 +86,19 @@ public class ConvertStorageToAdoc {
         return styles;
     }
 
+    /**
+     * Разобранный rendered view — самое тяжёлое тело страницы, поэтому парсим его лениво и один раз
+     * на конвертацию (нужен и для резолва ссылок, и для картинок с чужих страниц).
+     */
+    private Document viewDocument() {
+        if (viewDocument == null) {
+            viewDocument = Jsoup.parse(view == null ? "" : view, UTF_8.name());
+        }
+        return viewDocument;
+    }
+
     public Map<String, String> resolveLink() {
-        Document viewDoc = Jsoup.parse(view, UTF_8.name());
-        Elements elements = viewDoc.getElementsByTag("a");
+        Elements elements = viewDocument().getElementsByTag("a");
         Map<String, String> res = new HashMap<>();
         for (Element element : elements) {
             String link = element.attr("href");
@@ -165,7 +177,7 @@ public class ConvertStorageToAdoc {
         if (StringUtils.isBlank(view)) {
             return res;
         }
-        for (Element img : Jsoup.parse(view, UTF_8.name()).getElementsByTag("img")) {
+        for (Element img : viewDocument().getElementsByTag("img")) {
             String name = img.attr("data-linked-resource-default-alias");
             String src = img.attr("data-image-src");
             if (StringUtils.isBlank(src)) {

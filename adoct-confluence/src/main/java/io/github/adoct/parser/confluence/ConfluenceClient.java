@@ -47,6 +47,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -67,6 +71,8 @@ public class ConfluenceClient implements ConfluenceGateway, Closeable {
     private static final long IDLE_EVICT_SECONDS = 30L;
     /** Размер страницы при постраничном чтении вложений (дефолт Confluence — 25). */
     private static final int ATTACHMENT_PAGE_SIZE = 200;
+    /** Сколько вложений качаем одновременно. Не больше пула соединений, иначе задачи просто встанут в очередь. */
+    private static final int ATTACHMENT_DOWNLOAD_THREADS = 8;
 
     private final PoolingHttpClientConnectionManager connectionManager;
     private final CloseableHttpClient httpClient;
@@ -594,23 +600,69 @@ public class ConfluenceClient implements ConfluenceGateway, Closeable {
      */
     @SneakyThrows
     public void loadAttach(Collection<LinkResult> values, Path attachmentFolder, Consumer<String> progress) {
-        Set<String> loaded = new HashSet<>();
+        Set<String> seen = new HashSet<>();
+        List<LinkResult> unique = new ArrayList<>();
         for (LinkResult value : values) {
-            if (!loaded.add(value.title())) {
+            if (seen.add(value.title())) {
+                unique.add(value);
+            } else {
                 log.debug("Вложение {} уже скачано в этом проходе — пропускаем", value.title());
-                continue;
             }
-            Path file = attachmentFolder.resolve(value.title());
-            byte[] bytes = downLoad(value.url());
-            if (bytes == null) {
-                // нет прав/файл удалён — пропускаем, но экспорт не роняем
-                log.warn("Не удалось скачать вложение {} ({})", value.title(), value.url());
-                continue;
+        }
+        if (unique.isEmpty()) {
+            return;
+        }
+        if (unique.size() == 1) {
+            loadOne(unique.getFirst(), attachmentFolder, progress);
+            return;
+        }
+        downloadInParallel(unique, attachmentFolder, progress);
+    }
+
+    /**
+     * Качает вложения параллельно: это чистый I/O, и на пуле соединений несколько загрузок идут
+     * заметно быстрее последовательных. Степень параллелизма ограничена размером пула, чтобы не
+     * упереться в него очередью.
+     */
+    private void downloadInParallel(List<LinkResult> values, Path attachmentFolder, Consumer<String> progress)
+            throws InterruptedException {
+        int threads = Math.min(ATTACHMENT_DOWNLOAD_THREADS, values.size());
+        // Прогресс уходит в индикатор вызывающего — сериализуем, он не обязан быть потокобезопасным.
+        Consumer<String> safeProgress = progress == null ? null : name -> {
+            synchronized (this) {
+                progress.accept(name);
             }
-            Files.write(file, bytes);
-            if (progress != null) {
-                progress.accept(value.title());
+        };
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        try {
+            List<Future<?>> tasks = new ArrayList<>(values.size());
+            for (LinkResult value : values) {
+                tasks.add(pool.submit(() -> loadOne(value, attachmentFolder, safeProgress)));
             }
+            for (Future<?> task : tasks) {
+                try {
+                    task.get();
+                } catch (ExecutionException e) {
+                    // Отдельное вложение не должно ронять выгрузку страницы целиком.
+                    log.warn("Ошибка при скачивании вложения: {}", e.getCause().getMessage());
+                }
+            }
+        } finally {
+            pool.shutdown();
+        }
+    }
+
+    /** Скачивает одно вложение. Недоступное (нет прав/удалено) пропускает, не роняя экспорт. */
+    @SneakyThrows
+    private void loadOne(LinkResult value, Path attachmentFolder, Consumer<String> progress) {
+        byte[] bytes = downLoad(value.url());
+        if (bytes == null) {
+            log.warn("Не удалось скачать вложение {} ({})", value.title(), value.url());
+            return;
+        }
+        Files.write(attachmentFolder.resolve(value.title()), bytes);
+        if (progress != null) {
+            progress.accept(value.title());
         }
     }
 }

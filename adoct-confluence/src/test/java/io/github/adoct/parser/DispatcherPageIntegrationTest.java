@@ -473,6 +473,74 @@ public class DispatcherPageIntegrationTest {
         assertFalse("изменившаяся страница должна перевыгрузиться", Files.readString(child).contains("SENTINEL"));
     }
 
+    @Test
+    public void parallelExportWritesWholeTree() throws IOException {
+        WideTreeGateway gateway = new WideTreeGateway(12);
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+
+        dispatcher.generate("root", (t, v) -> { });
+
+        assertWideTreeExported(12);
+    }
+
+    @Test
+    public void sequentialExportWritesSameTree() throws IOException {
+        WideTreeGateway gateway = new WideTreeGateway(12);
+        DispatcherPage dispatcher = new DispatcherPage(gateway, tmp, ObjectMapperExt.INSTANT);
+        dispatcher.setExportThreads(1);
+
+        dispatcher.generate("root", (t, v) -> { });
+
+        assertWideTreeExported(12);
+    }
+
+    private void assertWideTreeExported(int width) throws IOException {
+        Path root = tmp.resolve("Корень");
+        assertTrue(Files.exists(root.resolve("index.adoc")));
+        for (int i = 0; i < width; i++) {
+            Path child = root.resolve("Страница " + i);
+            assertTrue("нет страницы " + i, Files.exists(child.resolve("index.adoc")));
+            assertTrue("нет вложенной страницы " + i,
+                    Files.exists(child.resolve("Вложенная " + i).resolve("index.adoc")));
+            assertTrue(Files.readString(child.resolve("index.adoc")).contains("Страница " + i));
+        }
+    }
+
+    /** Широкое дерево: корень → N страниц, у каждой по одной вложенной. Дерево отдаётся пакетом. */
+    private static class WideTreeGateway extends FakeGateway {
+        private final int width;
+
+        WideTreeGateway(int width) {
+            super(null);
+            this.width = width;
+        }
+
+        @Override
+        public List<ConfluenceGateway.PageNode> subtree(String rootId) {
+            List<ConfluenceGateway.PageNode> nodes = new ArrayList<>();
+            for (int i = 0; i < width; i++) {
+                nodes.add(new ConfluenceGateway.PageNode("c" + i, "Страница " + i, "root", null));
+                nodes.add(new ConfluenceGateway.PageNode("g" + i, "Вложенная " + i, "c" + i, null));
+            }
+            return nodes;
+        }
+
+        @Override
+        public ContentPage getMainPage(String id) {
+            String title = titleOf(id);
+            return new ContentPage(title, "http://confluence/" + title, "2024-01-01T00:00:00.000+0000",
+                    "<h1>" + title + "</h1><p>тело " + title + "</p>", "<p>view</p>", Map.of());
+        }
+
+        private String titleOf(String id) {
+            if ("root".equals(id)) {
+                return "Корень";
+            }
+            String index = id.substring(1);
+            return id.startsWith("c") ? "Страница " + index : "Вложенная " + index;
+        }
+    }
+
     /**
      * Фейк, умеющий отдать всё поддерево одним пакетом ({@code subtree}) и падающий на попытке
      * обойти дерево по одной странице.
