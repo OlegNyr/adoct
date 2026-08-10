@@ -1,4 +1,5 @@
 import org.jetbrains.changelog.markdownToHTML
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
 // Слой плагина IntelliJ: UI, действия, сервисы. Собирает движок (:adoct-confluence),
@@ -75,7 +76,20 @@ intellijPlatform {
     // Plugin Verifier: те же проверки совместимости, что гоняет Marketplace.
     pluginVerification {
         ides {
-            recommended()
+            // Не recommended(): он берёт каналы RELEASE+EAP+RC, а верхней границы у нас нет
+            // (pluginUntilBuild пуст) — значит в список всегда попадает свежайший EAP, чьего
+            // инсталлятора в репозитории может не быть, и задача падает на резолве зависимости.
+            // Плюс recommended() умеет только инсталляторы (десятки ГБ на каждую IDE), тогда как
+            // useInstaller = false берёт тот же Maven-архив, что уже скачан для компиляции.
+            property("pluginVerifierIdeVersions").get()
+                .split(',')
+                .map(String::trim)
+                .filter(String::isNotEmpty)
+                .forEach { ideVersion ->
+                    create(IntelliJPlatformType.IntellijIdeaCommunity, ideVersion) {
+                        useInstaller = false
+                    }
+                }
         }
     }
 }

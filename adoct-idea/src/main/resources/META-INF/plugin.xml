@@ -2,7 +2,7 @@
 <idea-plugin>
     <id>org.AsciiDocTools.plugins.idea</id>
     <name>AsciiDocTools</name>
-    <vendor email="andrbars@mail.ru" url="https://gitverse.ru/andrbars/andrbars"/>
+    <vendor email="andrbars@mail.ru" url="https://gitverse.ru/andrbars/andrbars">andrbars</vendor>
     <depends>com.intellij.modules.platform</depends>
 
     <resource-bundle>messages.Bundle</resource-bundle>

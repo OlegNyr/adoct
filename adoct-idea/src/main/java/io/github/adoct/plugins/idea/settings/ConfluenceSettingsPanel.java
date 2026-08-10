@@ -208,7 +208,8 @@ public class ConfluenceSettingsPanel {
         gbc.gridy = 2;
         dialogPanel.add(new JBLabel("Token:"), gbc);
 
-        JPasswordField tokenPasswordField = new JPasswordField(tokenField.getText(), 20);
+        // getPassword(), а не устаревший getText(): последний оставляет токен жить в пуле строк
+        JPasswordField tokenPasswordField = new JPasswordField(new String(tokenField.getPassword()), 20);
         gbc.gridx = 1;
         gbc.gridy = 2;
         dialogPanel.add(tokenPasswordField, gbc);
