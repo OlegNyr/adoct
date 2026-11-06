@@ -70,7 +70,7 @@ public final class AdocPageTitle {
     }
 
     private static String fileName(String target) {
-        String name = Path.of(target).getFileName().toString();
+        String name = DocPaths.fileName(target);
         int dot = name.lastIndexOf('.');
         return dot > 0 ? name.substring(0, dot) : name;
     }

@@ -31,10 +31,11 @@ public final class ConfluenceIncludeProcessor extends IncludeProcessor {
         reader.pushInclude(block, target, target, 1, attributes);
     }
 
+    /** Файл include; {@code null}, если цель не путь — заголовок тогда берётся по имени из {@code target}. */
     private static Path resolve(Document document, String target) {
         Object docdir = document.getAttribute("docdir");
         Path base = docdir == null ? Path.of(".") : Path.of(docdir.toString());
-        return base.resolve(target).normalize();
+        return DocPaths.resolve(base, target).orElse(null);
     }
 
     /**

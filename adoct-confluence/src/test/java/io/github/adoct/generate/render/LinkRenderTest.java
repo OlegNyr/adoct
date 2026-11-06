@@ -27,6 +27,21 @@ public class LinkRenderTest extends AbstractStorageRendererTest {
     }
 
     @Test
+    public void crossReferenceWithLineBreakInTextBecomesConfluenceLink() {
+        String adoc = """
+                [[routing]]Маршрутизация::
+                Текст.
+
+                Управляет <<routing,настройкой
+                маршрутизации>>.
+                """;
+        String xhtml = render(adoc).xhtml();
+        assertContains(xhtml,
+                "<ac:link ac:anchor=\"routing\"><ac:link-body>настройкой\nмаршрутизации</ac:link-body></ac:link>");
+        assertNotContains(xhtml, "href=\"#routing\"");
+    }
+
+    @Test
     public void externalLinkIsLeftUntouched() {
         String xhtml = render("ссылка https://example.com[сайт].\n").xhtml();
         assertContains(xhtml, "<a href=\"https://example.com\">сайт</a>");

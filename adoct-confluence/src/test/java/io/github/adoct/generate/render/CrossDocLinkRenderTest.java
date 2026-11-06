@@ -86,6 +86,16 @@ public class CrossDocLinkRenderTest {
         assertNoRawAdocHref(xhtml);
     }
 
+    @Test
+    public void crossReferenceWithLineBreakInTextBecomesPageLink() throws Exception {
+        // текст ссылки перенесён на новую строку — AsciiDoctor оставляет \n внутри <a>…</a>
+        String xhtml = renderWithNeighbors("См. <<child.adoc#sec,рабочее\nместо менеджера>>.").xhtml();
+        assertContains(xhtml, "<ac:link ac:anchor=\"sec\">");
+        assertContains(xhtml, "<ri:page ri:content-title=\"Дочерняя страница\"");
+        assertContains(xhtml, "<ac:link-body>рабочее\nместо менеджера</ac:link-body>");
+        assertNoRawAdocHref(xhtml);
+    }
+
     private static void assertNoRawAdocHref(String xhtml) {
         assertFalse(xhtml, xhtml.contains("<a href=\""));
     }

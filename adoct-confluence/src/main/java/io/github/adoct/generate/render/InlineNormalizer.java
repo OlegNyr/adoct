@@ -5,12 +5,14 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Entities;
 import io.github.adoct.generate.asciidoc.AdocPageTitle;
 import io.github.adoct.generate.asciidoc.AnchorIndex;
+import io.github.adoct.generate.asciidoc.DocPaths;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -41,15 +43,21 @@ final class InlineNormalizer {
     // {@code class="role"} (для {@code link:x[Текст,role=...]}), и без этого межфайловые .adoc-ссылки
     // не распознавались и утекали в обычный href.
 
+    // DOTALL у трёх шаблонов ссылок ниже: текст ссылки может переноситься на новую строку
+    // ({@code <<file.adoc#id,рабочее⏎место>>}), и без него такие ссылки утекали в Confluence сырым href.
+
     /** Внутренняя перекрёстная ссылка от {@code <<id,текст>>}: {@code <a href="#id">текст</a>}. */
-    private static final Pattern INTERNAL_LINK = Pattern.compile("<a href=\"#([^\"]+)\"[^>]*>(.*?)</a>");
+    private static final Pattern INTERNAL_LINK = Pattern.compile(
+            "<a href=\"#([^\"]+)\"[^>]*>(.*?)</a>", Pattern.DOTALL);
 
     /** Межфайловая ссылка от {@code <<file.adoc#id,текст>>}: {@code <a href="file.adoc#id">текст</a>}. */
     private static final Pattern CROSS_DOC_LINK = Pattern.compile(
-            "<a href=\"([^\"#]+\\.adoc)(?:#([^\"]+))?\"[^>]*>(.*?)</a>", Pattern.CASE_INSENSITIVE);
+            "<a href=\"([^\"#]+\\.adoc)(?:#([^\"]+))?\"[^>]*>(.*?)</a>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
     /** Любая оставшаяся ссылка {@code <a href="X">текст</a>} (после .adoc и якорей). */
-    private static final Pattern FILE_LINK = Pattern.compile("<a href=\"([^\"]+)\"[^>]*>(.*?)</a>");
+    private static final Pattern FILE_LINK = Pattern.compile(
+            "<a href=\"([^\"]+)\"[^>]*>(.*?)</a>", Pattern.DOTALL);
 
     /**
      * Моноширинное упоминание файла набора: {@code `file.adoc`} → {@code <code>file.adoc</code>}. Если
@@ -113,12 +121,12 @@ final class InlineNormalizer {
         if (URL_SCHEME.matcher(src).find() || src.startsWith("//")) {
             return StorageFormat.inlineImageUrl(src, alt);
         }
-        Path resolved = resolveDoc(src);
-        if (!Files.isRegularFile(resolved)) {
+        Optional<Path> resolved = resolveDoc(src);
+        if (resolved.isEmpty()) {
             return imgTag;
         }
-        attachments.add(resolved);
-        return StorageFormat.inlineImageAttachment(resolved.getFileName().toString(), alt);
+        attachments.add(resolved.get());
+        return StorageFormat.inlineImageAttachment(resolved.get().getFileName().toString(), alt);
     }
 
     private static String attribute(Pattern pattern, String tag) {
@@ -143,7 +151,7 @@ final class InlineNormalizer {
 
     /** Межфайловая ссылка на другую страницу (по заголовку файла-цели), опционально с якорем. */
     private String crossDocLink(String path, String anchor, String body) {
-        String title = pageTitleFor(resolveAdoc(path), path);
+        String title = pageTitleFor(resolveAdoc(path).orElse(null), path);
         return StorageFormat.pageLink(title, anchor, spaceKey, crossDocText(body, title, path, anchor));
     }
 
@@ -154,31 +162,25 @@ final class InlineNormalizer {
      * оставляем как код.
      */
     private String codeAdocLink(String path, String anchor, String codeHtml) {
-        Path file = resolveAdoc(path);
-        if (!Files.isRegularFile(file)) {
+        Optional<Path> file = resolveAdoc(path);
+        if (file.isEmpty()) {
             return codeHtml;
         }
-        String title = pageTitleFor(file, path);
+        String title = pageTitleFor(file.get(), path);
         return StorageFormat.pageLink(title, anchor, spaceKey, StorageFormat.escapeText(title));
     }
 
     /**
      * Резолвит {@code .adoc}-цель ссылки: сперва относительно папки текущего файла, затем относительно
-     * корня публикации (в доках пути к другим страницам часто задают от корня набора). Возвращает
-     * существующий файл, если нашли, иначе — base-вариант (для fallback-заголовка по имени файла).
+     * корня публикации (в доках пути к другим страницам часто задают от корня набора). Пусто — файла нет
+     * (или строка не путь, например шаблон {@code client-*.adoc}): заголовок тогда берётся по имени файла.
      */
-    private Path resolveAdoc(String path) {
-        Path fromBase = resolveDoc(path);
-        if (Files.isRegularFile(fromBase)) {
+    private Optional<Path> resolveAdoc(String path) {
+        Optional<Path> fromBase = resolveDoc(path);
+        if (fromBase.isPresent() || rootDir == null) {
             return fromBase;
         }
-        if (rootDir != null) {
-            Path fromRoot = rootDir.resolve(decode(path)).normalize();
-            if (Files.isRegularFile(fromRoot)) {
-                return fromRoot;
-            }
-        }
-        return fromBase;
+        return DocPaths.resolve(rootDir, decode(path)).filter(Files::isRegularFile);
     }
 
     /**
@@ -188,7 +190,7 @@ final class InlineNormalizer {
      * меняем — и {@code = Заголовок} в файле может с ним расходиться.
      */
     private String pageTitleFor(Path file, String path) {
-        if (pageTitleResolver != null) {
+        if (pageTitleResolver != null && file != null) {
             String real = pageTitleResolver.apply(file);
             if (real != null && !real.isBlank()) {
                 return real;
@@ -232,29 +234,29 @@ final class InlineNormalizer {
         if (URL_SCHEME.matcher(href).find() || href.startsWith("//")) {
             return original;
         }
-        Path resolved = resolveDoc(href);
-        if (!Files.isRegularFile(resolved)) {
+        Optional<Path> resolved = resolveDoc(href);
+        if (resolved.isEmpty()) {
             return original;
         }
-        attachments.add(resolved);
-        String fileName = resolved.getFileName().toString();
+        attachments.add(resolved.get());
+        String fileName = resolved.get().getFileName().toString();
         String text = body == null || body.isBlank() ? fileName : body;
         return StorageFormat.attachmentLink(fileName, text);
     }
 
-    private Path resolveDoc(String path) {
-        Path p = at(path);
-        if (Files.isRegularFile(p)) {
-            return p;
+    /** Существующий локальный файл по пути из документа (от папки текущего файла); иначе пусто. */
+    private Optional<Path> resolveDoc(String path) {
+        Optional<Path> direct = existing(path);
+        if (direct.isPresent()) {
+            return direct;
         }
         // AsciiDoctor кодирует в href/src спецсимволы (пробел → %20), а в имени файла они настоящие
         String decoded = decode(path);
-        return decoded.equals(path) ? p : at(decoded);
+        return decoded.equals(path) ? Optional.empty() : existing(decoded);
     }
 
-    private Path at(String path) {
-        Path p = Path.of(path);
-        return baseDir == null ? p : baseDir.resolve(p).normalize();
+    private Optional<Path> existing(String path) {
+        return DocPaths.resolve(baseDir, path).filter(Files::isRegularFile);
     }
 
     /** Percent-decode пути; битую кодировку (одиночный {@code %}) оставляем как есть. */

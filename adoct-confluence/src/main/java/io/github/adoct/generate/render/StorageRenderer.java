@@ -11,10 +11,12 @@ import org.asciidoctor.ast.Section;
 import org.asciidoctor.ast.StructuralNode;
 import org.asciidoctor.ast.Table;
 import io.github.adoct.generate.asciidoc.AnchorIndex;
+import io.github.adoct.generate.asciidoc.DocPaths;
 import io.github.adoct.generate.model.RenderResult;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 
 /**
@@ -318,9 +320,9 @@ public final class StorageRenderer {
 
     private void renderImage(StructuralNode node, RenderSink sink) {
         String target = String.valueOf(node.getAttribute("target"));
-        sink.attachments().add(resolveImage(target));
+        resolveImage(target).ifPresent(sink.attachments()::add);
         String image = StorageFormat.image(
-                Path.of(target).getFileName().toString(),
+                DocPaths.fileName(target),
                 strAttr(node, "alt"),
                 node.getTitle(),
                 strAttr(node, "width"),
@@ -396,9 +398,12 @@ public final class StorageRenderer {
         return normalizer.normalize(html, sink.attachments());
     }
 
-    private Path resolveImage(String target) {
-        Path p = imagesDir.isEmpty() ? Path.of(target) : Path.of(imagesDir, target);
-        return baseDir == null ? p : baseDir.resolve(p);
+    /** Локальный файл картинки; пусто, если цель не путь (URL на Windows, шаблон с {@code *}). */
+    private Optional<Path> resolveImage(String target) {
+        if (imagesDir.isEmpty()) {
+            return DocPaths.resolve(baseDir, target);
+        }
+        return DocPaths.resolve(baseDir, imagesDir).flatMap(dir -> DocPaths.resolve(dir, target));
     }
 
     private static String content(StructuralNode node) {
