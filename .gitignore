@@ -34,3 +34,6 @@ out/
 /.idea/misc.xml
 /.idea/templateLanguagesSettings.xml
 /.idea/vcs.xml
+
+# Windows: метаданные загрузок (ADS), попадающие в WSL
+*:Zone.Identifier
