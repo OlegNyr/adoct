@@ -114,7 +114,7 @@ A Gradle multi-module build (JVM toolchain 21):
 |---|---|
 | `adoct-confluence` | The conversion engine (`parser` = Confluence→AsciiDoc, `generate` = AsciiDoc→Confluence). Pure Java library. |
 | `adoct-jira` | Jira Server/DC client. |
-| `adoct-bitbucket` | Bitbucket Server/DC client (code search + repos/files/PRs, read-only). |
+| `adoct-bitbucket` | Bitbucket Server/DC client (code search + repos/files/PRs, PR creation). |
 | `adoct-anonymize` | Export anonymizer + bug-report bundling. |
 | `adoct-mcp` / `adoct-mcp-cli` | Embedded MCP server and its standalone/native CLI. |
 | `adoct-maven-plugin` | Maven plugin (`adoct:publish`) that publishes to Confluence. |

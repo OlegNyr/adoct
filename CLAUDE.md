@@ -13,7 +13,7 @@ A **Gradle multi-module** build; the IntelliJ Platform Gradle Plugin (2.x) is ap
 Modules (Gradle subprojects):
 - `:adoct-confluence` — the **conversion engine** (`parser` = Confluence→AsciiDoc, `generate` = AsciiDoc→Confluence). Pure `java-library`, no IntelliJ dependency.
 - `:adoct-jira` — Jira integration (`JiraClient`). Pure `java-library`.
-- `:adoct-bitbucket` — Bitbucket Server/DC integration (`BitbucketClient`: code search + repos/files/PRs, read-only). Pure `java-library`, JDK HttpClient + Jackson, returns raw `JsonNode`.
+- `:adoct-bitbucket` — Bitbucket Server/DC integration (`BitbucketClient`: code search + repos/files/PRs; the only write is PR creation). Pure `java-library`, JDK HttpClient + Jackson, returns raw `JsonNode`.
 - `:adoct-anonymize` — export anonymizer + bug-report bundling (`anonymize`, `bugreport`). Pure `java-library`, independent of the engine.
 - `:adoct-mcp` / `:adoct-mcp-cli` — the embedded **MCP server** (`jira_*`/`confluence_*`/`bitbucket_*` tools) and its standalone CLI (`McpCli`; stdio by default, `--http` optional) + a GraalVM native image (drops asciidoctorj-dependent tools).
 - `:adoct-mcp-jar` — a self-contained runnable **fat-JAR** of the MCP server (`java -jar adoct-mcp.jar`), built with the `com.gradleup.shadow` plugin; unlike the native image it keeps the full toolset (incl. `confluence_publish_adoc`). See `adoct-mcp-jar/README.md`.

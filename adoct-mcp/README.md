@@ -39,7 +39,7 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
   `AppLifecycleListener`, off-EDT; перезапуск из настроек.
 - Аутентификация Atlassian — **PAT** (`Authorization: Bearer`), цель — **Server/Data Center**.
 
-## Каталог тулов (75) + промпт
+## Каталог тулов (76) + промпт
 
 **Jira — задачи:** `jira_get_issue`, `jira_search` (JQL), `jira_get_transitions`,
 `jira_create_issue` (все поля за один вызов: assignee/labels/epicKey/links/кастомные поля),
@@ -80,7 +80,8 @@ IntelliJ-плагин (adoct-idea): McpServerService (старт/стоп) + Mcp
 `POST /rest/search/latest/search`, фильтр `projectKey`/`repoSlug`), `bitbucket_list_projects`,
 `bitbucket_list_repositories`, `bitbucket_get_repository`, `bitbucket_get_file`, `bitbucket_browse`,
 `bitbucket_list_pull_requests`, `bitbucket_get_pull_request`, `bitbucket_get_pull_request_diff`,
-`bitbucket_get_pull_request_activities` (чтение; PAT Bearer, как Jira/Confluence).
+`bitbucket_get_pull_request_activities`; запись — `bitbucket_create_pull_request` (ветка → ветка, целевая по
+умолчанию — дефолтная ветка репозитория, ревьюеры, черновик, PR из форка). PAT Bearer, как Jira/Confluence.
 
 **Prompt:** `product_owner` — персона PO с навыками senior Java.
 
@@ -131,7 +132,7 @@ JSON-RPC на строку) или **HTTP** (`--http --port N`). Конфиг �
 | Транспорт | HTTP (свой JSON-RPC, без SDK) | STDIO / SSE / HTTP | Remote HTTP (SSE) |
 | Цель | **Server/Data Center** | Cloud **и** Server/DC | Только **Cloud** |
 | Аутентификация | PAT (из настроек IDE) | PAT / Basic / OAuth | OAuth 2.1 |
-| Кол-во тулов | **75** (42 Jira + 23 Confluence + 10 Bitbucket) | **~72** (52 Jira + 20 Confluence) | много (Jira/Confluence/JSM/Bitbucket/Compass) |
+| Кол-во тулов | **76** (42 Jira + 23 Confluence + 11 Bitbucket) | **~72** (52 Jira + 20 Confluence) | много (Jira/Confluence/JSM/Bitbucket/Compass) |
 | Продукты | Jira + Confluence | Jira + Confluence | + JSM, Bitbucket, Compass |
 | Экспорт/публикация AsciiDoc | ✅ **уникально** | ❌ | ❌ |
 | Персона-промпт | ✅ `product_owner` | ❌ | ❌ |

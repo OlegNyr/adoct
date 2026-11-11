@@ -27,6 +27,7 @@ import io.github.adoct.mcp.tools.confluence.ConfluenceReplyToComment;
 import io.github.adoct.mcp.tools.confluence.ConfluenceSearch;
 import io.github.adoct.mcp.tools.confluence.ConfluenceUploadAttachment;
 import io.github.adoct.mcp.tools.bitbucket.BitbucketBrowse;
+import io.github.adoct.mcp.tools.bitbucket.BitbucketCreatePullRequest;
 import io.github.adoct.mcp.tools.bitbucket.BitbucketGetFile;
 import io.github.adoct.mcp.tools.bitbucket.BitbucketGetPullRequest;
 import io.github.adoct.mcp.tools.bitbucket.BitbucketGetPullRequestActivities;
@@ -185,7 +186,8 @@ public final class ToolRegistry implements java.io.Closeable {
                 new BitbucketListPullRequests(),
                 new BitbucketGetPullRequest(),
                 new BitbucketGetPullRequestDiff(),
-                new BitbucketGetPullRequestActivities());
+                new BitbucketGetPullRequestActivities(),
+                new BitbucketCreatePullRequest());
     }
 
     /** Полный набор фабрик: core + asciidoctorj-зависимый {@code confluence_publish_adoc}. */

@@ -64,7 +64,7 @@ description: >
 ## MCP-сервер (Jira + Confluence из ассистента)
 
 Встроенный MCP-сервер (модуль `:adoct-mcp`) поднимается плагином на старте IDE (HTTP, JSON-RPC).
-**75 тулов** (Jira + Confluence + Bitbucket), персона-промпт `product_owner`. Аутентификация — **PAT** (Server/DC).
+**76 тулов** (Jira + Confluence + Bitbucket), персона-промпт `product_owner`. Аутентификация — **PAT** (Server/DC).
 
 Шпаргалка по группам тулов:
 - **Jira задачи/agile:** `jira_search` (JQL), `jira_get_issue`, `jira_create_issue` (все поля за один
@@ -87,7 +87,8 @@ description: >
 - **Bitbucket (Server/DC):** `bitbucket_search` (поиск кода по содержимому/именам файлов,
   `POST /rest/search/latest/search`, фильтр `projectKey`/`repoSlug`), навигация —
   `bitbucket_list_projects`/`list_repositories`/`get_repository`, `bitbucket_get_file`/`browse`; ревью —
-  `bitbucket_list_pull_requests`, `bitbucket_get_pull_request`/`_diff`/`_activities` (чтение). Пагинация —
+  `bitbucket_list_pull_requests`, `bitbucket_get_pull_request`/`_diff`/`_activities`; создание PR —
+  `bitbucket_create_pull_request`. Пагинация —
   `limit` + `start` (offset).
 
 ## Рабочие сценарии (playbooks)
@@ -148,7 +149,11 @@ description: >
   опц. `at`=ветка/commit); каталог — `bitbucket_browse`.
 - **Ревью:** `bitbucket_list_pull_requests {…,"state":"OPEN"}`, `bitbucket_get_pull_request`,
   `bitbucket_get_pull_request_diff`, `bitbucket_get_pull_request_activities` (комментарии+события).
-  Всё **только чтение** (write-операции PR — отдельная итерация).
+- **Создание PR:** `bitbucket_create_pull_request {"projectKey":"…","repoSlug":"…","title":"…",
+  "fromBranch":"feature/x"}` — `toBranch` по умолчанию дефолтная ветка репозитория; опц. `description`,
+  `reviewers` (логины), `draft` (Bitbucket 8.18+), `fromProjectKey`/`fromRepoSlug` для PR из форка.
+  Ветку можно задать именем или полным `refs/heads/…`. Ответ — созданный PR (`id`, `links.self`).
+  Остальные write-операции PR (мерж, апрув, комментарии) пока не поддержаны.
 - **Пагинация:** у списков `limit` + `start` (offset). Хост-аргумент `host` — если несколько серверов.
 
 ## Запуск MCP
